@@ -112,7 +112,7 @@ export class NocsService {
     const { limit = 10, offset = 0 } = paginationDto;
 
     const resultados = await this.resultadoNocRepository
-      .createQueryBuilder('resultado') 
+      .createQueryBuilder('resultado')
       .select([
         'resultado.id',
         'resultado.codigo_resultado',
@@ -158,12 +158,125 @@ export class NocsService {
     return resultado;
   }
 
-  update(id: number, updateNocDto: UpdateNocDto) {
-    return `This action updates a #${id} noc`;
+  async update(id: string, updateNocDto: UpdateNocDto): Promise<ResultadoNoc> {
+
+    // 1. Destructuramos TODOS los IDs de relaciones del DTO
+    const {
+      claseId,
+      patronId,
+      indicadoresIds,
+      especialidadesIds,
+      diagnosticosIds,    // <-- NUEVO
+      intervencionesIds,  // <-- NUEVO
+      ...resultadoDetails
+    } = updateNocDto;
+
+    // 2. Pre-cargamos la entidad con los detalles simples
+    const resultado = await this.resultadoNocRepository.preload({
+      id,
+      ...resultadoDetails,
+    });
+
+    if (!resultado)
+      throw new NotFoundException(`Resultado con ID "${id}" no encontrado.`);
+
+    // 3. Manejo de Relaciones ManyToOne (Clase, Patron)
+    if (claseId) {
+      const clase = await this.claseNocRepository.findOneBy({ id: claseId });
+      if (!clase) throw new NotFoundException(`Clase con ID "${claseId}" no encontrada.`);
+      resultado.clase = clase;
+    }
+
+    if (patronId) {
+      const patron = await this.patronNocRepository.findOneBy({ id: patronId });
+      if (!patron) throw new NotFoundException(`Patrón con ID "${patronId}" no encontrado.`);
+      resultado.patron = patron;
+    }
+
+    // 4. Manejo de Relaciones ManyToMany (Indicadores)
+    if (indicadoresIds) {
+      if (indicadoresIds.length === 0) {
+        resultado.indicadores = [];
+      } else {
+        const indicadores = await this.indicadorNocRepository.findBy({ id: In(indicadoresIds) });
+        if (indicadores.length !== indicadoresIds.length) {
+          throw new BadRequestException('Uno o más IDs de indicadores no son válidos.');
+        }
+        resultado.indicadores = indicadores;
+      }
+    }
+
+    // 5. Manejo de Relaciones ManyToMany (Especialidades)
+    if (especialidadesIds) {
+      if (especialidadesIds.length === 0) {
+        resultado.especialidades = [];
+      } else {
+        const especialidades = await this.especialidadRepository.findBy({ id: In(especialidadesIds) });
+        if (especialidades.length !== especialidadesIds.length) {
+          throw new BadRequestException('Uno o más IDs de especialidades no son válidos.');
+        }
+        resultado.especialidades = especialidades;
+      }
+    }
+
+    // 6. --- NUEVO: Manejo de Relaciones ManyToMany (Diagnósticos NANDA) ---
+    if (diagnosticosIds) {
+      if (diagnosticosIds.length === 0) {
+        resultado.diagnosticos = [];
+      } else {
+        const diagnosticos = await this.diagnosticoNandaRepository.findBy({ id: In(diagnosticosIds) });
+        if (diagnosticos.length !== diagnosticosIds.length) {
+          throw new BadRequestException('Uno o más IDs de Diagnósticos (NANDA) no son válidos.');
+        }
+        resultado.diagnosticos = diagnosticos;
+      }
+    }
+
+    // 7. --- NUEVO: Manejo de Relaciones ManyToMany (Intervenciones NIC) ---
+    if (intervencionesIds) {
+      if (intervencionesIds.length === 0) {
+        resultado.intervenciones = [];
+      } else {
+        const intervenciones = await this.intervencionNicRepository.findBy({ id: In(intervencionesIds) });
+        if (intervenciones.length !== intervencionesIds.length) {
+          throw new BadRequestException('Uno o más IDs de Intervenciones (NIC) no son válidos.');
+        }
+        resultado.intervenciones = intervenciones;
+      }
+    }
+
+    // 8. Guardamos la entidad actualizada
+    try {
+      return await this.resultadoNocRepository.save(resultado);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} noc`;
+  async remove(id: string): Promise<void> {
+    // 1. Usamos findOne para cargar la entidad y sus relaciones
+    const resultado = await this.findOne(id);
+
+    // 2. Verificamos relaciones con Diagnósticos (NANDA)
+    if (resultado.diagnosticos && resultado.diagnosticos.length > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar el resultado. Aún tiene ${resultado.diagnosticos.length} diagnóstico(s) NANDA relacionado(s).`,
+      );
+    }
+
+    // 3. Verificamos relaciones con Intervenciones (NIC)
+    if (resultado.intervenciones && resultado.intervenciones.length > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar el resultado. Aún tiene ${resultado.intervenciones.length} intervención(es) NIC relacionada(s).`,
+      );
+    }
+
+    // 4. Si pasa las verificaciones, eliminamos
+    try {
+      await this.resultadoNocRepository.remove(resultado);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
   }
 
   async addDiagnostico(resultadoId: string, diagnosticoId: string): Promise<ResultadoNoc> {
@@ -315,6 +428,10 @@ export class NocsService {
 
     if (error.code === '23505') {
       throw new BadRequestException(error.detail);
+    }
+
+    if (error.code === '23503') { // Foreign key violation
+      throw new BadRequestException(`No se puede procesar la solicitud: el registro está siendo utilizado o una de las relaciones no existe. Detalle: ${error.detail}`);
     }
 
     throw new InternalServerErrorException('Unexpected error creating book. Check server logs.');

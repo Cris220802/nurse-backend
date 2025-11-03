@@ -128,7 +128,7 @@ export class NicsService {
       .leftJoin('intervencion.actividades', 'actividad')
       .leftJoin('intervencion.diagnosticos', 'diagnostico')
       .leftJoin('intervencion.resultados', 'resultado')
-      // --- CORRECCIÓN ---
+      .leftJoin('intervencion.especialidades', 'especialidad')
       // Seleccionamos la entidad principal COMPLETA y los campos específicos de las relaciones
       .select([
         'intervencion', // <-- Trae todos los campos de IntervencionNic
@@ -137,6 +137,7 @@ export class NicsService {
         'actividad.id', 'actividad.codigo', 'actividad.nombre',
         'diagnostico.id', 'diagnostico.codigo_diagnostico', 'diagnostico.nombre_diagnostico',
         'resultado.id', 'resultado.codigo_resultado', 'resultado.nombre_resultado',
+        'especialidad.id', 'especialidad.especialidad',
       ])
       .getOne();
 
@@ -147,12 +148,124 @@ export class NicsService {
     return intervencion;
   }
 
-  update(id: number, updateNicDto: UpdateNicDto) {
-    return `This action updates a #${id} nic`;
+  async update(id: string, updateNicDto: UpdateNicDto): Promise<IntervencionNic> {
+
+    // 1. Destructuramos TODOS los IDs de relaciones del DTO
+    const {
+      claseId,
+      campoId,
+      actividadesIds,
+      especialidadesIds,
+      diagnosticosIds,  // <-- NUEVO
+      resultadosIds,    // <-- NUEVO
+      ...intervencionDetails
+    } = updateNicDto;
+
+    // 2. Pre-cargamos la entidad con los detalles simples (nombre, codigo, etc.)
+    const intervencion = await this.intervencionNicRepository.preload({
+      id,
+      ...intervencionDetails,
+    });
+
+    if (!intervencion)
+      throw new NotFoundException(`Intervención con ID "${id}" no encontrada.`);
+
+    // 3. Manejo de Relaciones ManyToOne (Clase, Campo)
+    if (claseId) {
+      const clase = await this.claseNicRepository.findOneBy({ id: claseId });
+      if (!clase) throw new NotFoundException(`Clase con ID "${claseId}" no encontrada.`);
+      intervencion.clase = clase;
+    }
+
+    if (campoId) {
+      const campo = await this.campoNicRepository.findOneBy({ id: campoId });
+      if (!campo) throw new NotFoundException(`Campo con ID "${campoId}" no encontrado.`);
+      intervencion.campo = campo;
+    }
+
+    // 4. Manejo de Relaciones ManyToMany (Actividades)
+    if (actividadesIds) {
+      if (actividadesIds.length === 0) {
+        intervencion.actividades = [];
+      } else {
+        const actividades = await this.actividadNicRepository.findBy({ id: In(actividadesIds) });
+        if (actividades.length !== actividadesIds.length) {
+          throw new BadRequestException('Uno o más IDs de actividades no son válidos.');
+        }
+        intervencion.actividades = actividades;
+      }
+    }
+
+    // 5. Manejo de Relaciones ManyToMany (Especialidades)
+    if (especialidadesIds) {
+      if (especialidadesIds.length === 0) {
+        intervencion.especialidades = [];
+      } else {
+        const especialidades = await this.especialidadRepository.findBy({ id: In(especialidadesIds) });
+        if (especialidades.length !== especialidadesIds.length) {
+          throw new BadRequestException('Uno o más IDs de especialidades no son válidos.');
+        }
+        intervencion.especialidades = especialidades;
+      }
+    }
+
+    // 6. --- NUEVO: Manejo de Relaciones ManyToMany (Diagnósticos NANDA) ---
+    if (diagnosticosIds) {
+      if (diagnosticosIds.length === 0) {
+        intervencion.diagnosticos = [];
+      } else {
+        const diagnosticos = await this.diagnosticoNandaRepository.findBy({ id: In(diagnosticosIds) });
+        if (diagnosticos.length !== diagnosticosIds.length) {
+          throw new BadRequestException('Uno o más IDs de Diagnósticos (NANDA) no son válidos.');
+        }
+        intervencion.diagnosticos = diagnosticos;
+      }
+    }
+
+    // 7. --- NUEVO: Manejo de Relaciones ManyToMany (Resultados NOC) ---
+    if (resultadosIds) {
+      if (resultadosIds.length === 0) {
+        intervencion.resultados = [];
+      } else {
+        const resultados = await this.resultadoNocRepository.findBy({ id: In(resultadosIds) });
+        if (resultados.length !== resultadosIds.length) {
+          throw new BadRequestException('Uno o más IDs de Resultados (NOC) no son válidos.');
+        }
+        intervencion.resultados = resultados;
+      }
+    }
+
+    // 8. Guardamos la entidad actualizada
+    try {
+      return await this.intervencionNicRepository.save(intervencion);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} nic`;
+  async remove(id: string): Promise<void> {
+    // 1. Usamos findOne para cargar la entidad y sus relaciones
+    const intervencion = await this.findOne(id);
+
+    // 2. Verificamos relaciones con Diagnósticos (NANDA)
+    if (intervencion.diagnosticos && intervencion.diagnosticos.length > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar la intervención. Aún tiene ${intervencion.diagnosticos.length} diagnóstico(s) NANDA relacionado(s).`,
+      );
+    }
+
+    // 3. Verificamos relaciones con Resultados (NOC)
+    if (intervencion.resultados && intervencion.resultados.length > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar la intervención. Aún tiene ${intervencion.resultados.length} resultado(s) NOC relacionado(s).`,
+      );
+    }
+    // 4. Si pasa las verificaciones, eliminamos
+    try {
+      await this.intervencionNicRepository.remove(intervencion);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
   }
 
   // En el método addDiagnostico
@@ -268,6 +381,10 @@ export class NicsService {
 
     if (error.code === '23505') {
       throw new BadRequestException(error.detail);
+    }
+
+    if (error.code === '23503') {
+      throw new BadRequestException(`No se puede procesar la solicitud: el registro está siendo utilizado o una de las relaciones no existe. Detalle: ${error.detail}`);
     }
 
     throw new InternalServerErrorException('Unexpected error creating book. Check server logs.');

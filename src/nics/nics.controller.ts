@@ -62,13 +62,19 @@ export class NicsController {
   }
 
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() updateNicDto: UpdateNicDto) {
-    return this.nicsService.update(+id, updateNicDto); // El servicio actual tiene una implementación placeholder
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateNicDto: UpdateNicDto
+  ) {
+    // Corregido: Pasamos 'id' como string, no como número
+    return this.nicsService.update(id, updateNicDto);
   }
 
+  // --- MODIFICADO ---
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.nicsService.remove(+id); // El servicio actual tiene una implementación placeholder
+    // Corregido: Pasamos 'id' como string, no como número
+    return this.nicsService.remove(id);
   }
 
   // Endpoint para añadir una Intervención a un Diagnóstico

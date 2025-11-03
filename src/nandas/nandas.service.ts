@@ -4,7 +4,7 @@ import { UpdateNandaDto } from './dto/update-nanda.dto';
 import { CreateDominioNandaDto } from './dto/create-dominio.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DiagnosticoNanda } from './entities/diagnostico.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ClaseNanda } from './entities/clase.entity';
 import { DominioNanda } from './entities/dominio.entity';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
@@ -152,37 +152,157 @@ export class NandasService {
     return diagnostico;
   }
 
-  update(id: number, updateNandaDto: UpdateNandaDto) {
-    return `This action updates a #${id} nanda`;
+  async update(id: string, updateNandaDto: UpdateNandaDto): Promise<DiagnosticoNanda> {
+    
+    // 1. Destructuramos TODOS los IDs de relaciones
+    const { 
+      claseId, 
+      necesidadId, 
+      patronId, 
+      intervencionesIds, // <-- NUEVO
+      resultadosIds,     // <-- NUEVO
+      ...diagnosticoDetails 
+    } = updateNandaDto;
+
+    // 2. Usamos 'preload' para fusionar los campos simples (nombre, definicion, etc.)
+    // 'preload' NO carga las relaciones, solo prepara la entidad
+    const diagnostico = await this.diagnosticoNandaRepository.preload({
+      id,
+      ...diagnosticoDetails,
+    });
+
+    if (!diagnostico)
+      throw new NotFoundException(`Diagnóstico con ID "${id}" no encontrado.`);
+
+    // 3. Manejo de Relaciones ManyToOne (clase, necesidad, patrón)
+    if (claseId) {
+      const clase = await this.claseNandaRepository.findOneBy({ id: claseId });
+      if (!clase)
+        throw new NotFoundException(`Clase con ID "${claseId}" no encontrada.`);
+      diagnostico.clase = clase;
+    }
+
+    if (necesidadId) {
+      const necesidad = await this.necesidadNandaRepository.findOneBy({ id: necesidadId });
+      if (!necesidad)
+        throw new NotFoundException(`Necesidad con ID "${necesidadId}" no encontrada.`);
+      diagnostico.necesidad = necesidad;
+    }
+
+    if (patronId) {
+      const patron = await this.patronNandaRepository.findOneBy({ id: patronId });
+      if (!patron)
+        throw new NotFoundException(`Patrón con ID "${patronId}" no encontrado.`);
+      diagnostico.patron = patron;
+    }
+
+    // 4. --- NUEVO: Manejo de Relaciones ManyToMany (NICs) ---
+    // Verificamos si 'intervencionesIds' fue enviado en el DTO
+    if (intervencionesIds) {
+      // Si es un array vacío, simplemente limpiamos las relaciones
+      if (intervencionesIds.length === 0) {
+        diagnostico.intervenciones = [];
+      } else {
+        // Si tiene IDs, buscamos las entidades correspondientes
+        const intervenciones = await this.intervencionNicRepository.findBy({ 
+          id: In(intervencionesIds) 
+        });
+        
+        // Validación: Aseguramos que todos los IDs enviados fueron encontrados
+        if (intervenciones.length !== intervencionesIds.length) {
+          throw new BadRequestException('Uno o más IDs de Intervenciones (NIC) no son válidos.');
+        }
+        
+        // Asignamos el array de entidades. TypeORM se encargará de
+        // actualizar la tabla intermedia (unir-desunir) al guardar.
+        diagnostico.intervenciones = intervenciones;
+      }
+    }
+
+    // 5. --- NUEVO: Manejo de Relaciones ManyToMany (NOCs) ---
+    // Repetimos la misma lógica para los resultados
+    if (resultadosIds) {
+      if (resultadosIds.length === 0) {
+        diagnostico.resultados = [];
+      } else {
+        const resultados = await this.resultadoNocRepository.findBy({ 
+          id: In(resultadosIds) 
+        });
+
+        if (resultados.length !== resultadosIds.length) {
+          throw new BadRequestException('Uno o más IDs de Resultados (NOC) no son válidos.');
+        }
+        
+        diagnostico.resultados = resultados;
+      }
+    }
+
+    // 6. Guardamos la entidad actualizada
+    try {
+      return await this.diagnosticoNandaRepository.save(diagnostico);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} nanda`;
+  async remove(id: string): Promise<void> {
+    
+    // 1. Reutilizamos findOne(id) para cargar la entidad Y SUS RELACIONES.
+    // Esto ya lanza NotFoundException si no lo encuentra.
+    const diagnostico = await this.findOne(id);
+
+    // 2. Verificación de robustez: Comprobar si tiene relaciones activas (NICs o NOCs).
+    // Tu método findOne ya carga 'intervenciones' y 'resultados'.
+    if (diagnostico.intervenciones && diagnostico.intervenciones.length > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar el diagnóstico. Aún tiene ${diagnostico.intervenciones.length} intervención(es) NIC relacionada(s).`,
+      );
+    }
+
+    if (diagnostico.resultados && diagnostico.resultados.length > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar el diagnóstico. Aún tiene ${diagnostico.resultados.length} resultado(s) NOC relacionado(s).`,
+      );
+    }
+
+    // 3. Verificación de relaciones "Padre" (Clase, Necesidad, Patrón)
+    // Basado en tu lógica de 'create', un diagnóstico SIEMPRE tendrá estas relaciones.
+    // No es necesario comprobarlas aquí, ya que son parte del diagnóstico en sí,
+    // no "hijos" que dependan de él.
+
+    // 4. Si pasa las verificaciones, proceder a eliminar.
+    try {
+      // .remove() puede tomar la entidad completa
+      await this.diagnosticoNandaRepository.remove(diagnostico);
+    } catch (error) {
+      // Captura cualquier otro error de BD (como FKs que no hayamos cargado)
+      this.handleDBExceptions(error);
+    }
   }
 
-  async addIntervencion(diagnosticoId: string, intervencionId: string) {
-    const diagnostico = await this.findOne(diagnosticoId); // Reutilizamos findOne para cargar todo
+  // async addIntervencion(diagnosticoId: string, intervencionId: string) {
+  //   const diagnostico = await this.findOne(diagnosticoId); // Reutilizamos findOne para cargar todo
 
-    const intervencion = await this.intervencionNicRepository.findOneBy({ id: intervencionId });
+  //   const intervencion = await this.intervencionNicRepository.findOneBy({ id: intervencionId });
 
-    if (!intervencion) throw new NotFoundException('Intervención no encontrada');
+  //   if (!intervencion) throw new NotFoundException('Intervención no encontrada');
 
-    diagnostico.intervenciones.push(intervencion);
+  //   diagnostico.intervenciones.push(intervencion);
 
-    return await this.diagnosticoNandaRepository.save(diagnostico);
-  }
+  //   return await this.diagnosticoNandaRepository.save(diagnostico);
+  // }
 
-  async addResultado(diagnosticoId: string, resultadoId: string) {
-    const diagnostico = await this.findOne(diagnosticoId);
+  // async addResultado(diagnosticoId: string, resultadoId: string) {
+  //   const diagnostico = await this.findOne(diagnosticoId);
 
-    const resultado = await this.resultadoNocRepository.findOneBy({ id: resultadoId });
+  //   const resultado = await this.resultadoNocRepository.findOneBy({ id: resultadoId });
 
-    if (!resultado) throw new NotFoundException('Resultado no encontrado');
+  //   if (!resultado) throw new NotFoundException('Resultado no encontrado');
 
-    diagnostico.resultados.push(resultado);
+  //   diagnostico.resultados.push(resultado);
 
-    return await this.diagnosticoNandaRepository.save(diagnostico);
-  }
+  //   return await this.diagnosticoNandaRepository.save(diagnostico);
+  // }
 
 
   // Services de Clase
@@ -300,6 +420,10 @@ export class NandasService {
 
     if (error.code === '23505') {
       throw new BadRequestException(error.detail);
+    }
+
+    if (error.code === '23503') {
+        throw new BadRequestException(`No se puede eliminar: el registro está siendo utilizado por otras entidades. Detalle: ${error.detail}`);
     }
 
     throw new InternalServerErrorException('Unexpected error creating book. Check server logs.');

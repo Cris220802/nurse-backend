@@ -1,13 +1,16 @@
-import { IsOptional, IsString, MinLength } from "class-validator";
+import { IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 
 
 export class CreateBookDto {
+    @IsString()
+    @IsNotEmpty()
+    title: string;
 
     @IsString()
-    @MinLength(1)
-    name: string;
+    @IsNotEmpty()
+    author: string;
 
     @IsString()
-    @IsOptional()
-    image: string;
+    @IsNotEmpty()
+    description: string;
 }

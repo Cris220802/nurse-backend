@@ -14,6 +14,13 @@ async function bootstrap() {
     })
   );
 
+   // 👇 AQUÍ ESTÁ LA CONFIGURACIÓN DE CORS
+  app.enableCors({
+    origin: 'http://localhost:5173', // El origen de tu frontend
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true, // Permite que el frontend envíe cookies si es necesario
+  });
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

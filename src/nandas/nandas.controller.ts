@@ -80,30 +80,34 @@ export class NandasController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateNandaDto: UpdateNandaDto) {
-    return this.nandasService.update(+id, updateNandaDto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateNandaDto: UpdateNandaDto,
+  ) {
+    return this.nandasService.update(id, updateNandaDto);
   }
 
+  // --- MODIFICADO ---
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.nandasService.remove(+id);
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.nandasService.remove(id);
   }
 
   // Endpoint para añadir una Intervención a un Diagnóstico
-  @Post(':id/intervenciones')
-  addIntervencion(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() addRelationDto: AddRelationDto,
-  ) {
-    return this.nandasService.addIntervencion(id, addRelationDto.relationId);
-  }
+  // @Post(':id/intervenciones')
+  // addIntervencion(
+  //   @Param('id', ParseUUIDPipe) id: string,
+  //   @Body() addRelationDto: AddRelationDto,
+  // ) {
+  //   return this.nandasService.addIntervencion(id, addRelationDto.relationId);
+  // }
 
-  // Endpoint para añadir un Resultado a un Diagnóstico
-  @Post(':id/resultados')
-  addResultado(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() addRelationDto: AddRelationDto,
-  ) {
-    return this.nandasService.addResultado(id, addRelationDto.relationId);
-  }
+  // // Endpoint para añadir un Resultado a un Diagnóstico
+  // @Post(':id/resultados')
+  // addResultado(
+  //   @Param('id', ParseUUIDPipe) id: string,
+  //   @Body() addRelationDto: AddRelationDto,
+  // ) {
+  //   return this.nandasService.addResultado(id, addRelationDto.relationId);
+  // }
 }

@@ -76,28 +76,32 @@ export class NocsController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateNocDto: UpdateNocDto) {
-    return this.nocsService.update(+id, updateNocDto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string, 
+    @Body() updateNocDto: UpdateNocDto
+  ) {
+    return this.nocsService.update(id, updateNocDto); 
   }
 
+  // --- MODIFICADO ---
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.nocsService.remove(+id);
+  remove(@Param('id', ParseUUIDPipe) id: string) { 
+    return this.nocsService.remove(id); 
   }
 
   @Post(':id/diagnosticos')
-    addDiagnostico(
-        @Param('id', ParseUUIDPipe) id: string,
-        @Body() addRelationDto: AddRelationDto, // DTO que contiene el 'relationId' del diagnóstico
-    ) {
-        return this.nocsService.addDiagnostico(id, addRelationDto.relationId);
-    }
+  addDiagnostico(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() addRelationDto: AddRelationDto, // DTO que contiene el 'relationId' del diagnóstico
+  ) {
+    return this.nocsService.addDiagnostico(id, addRelationDto.relationId);
+  }
 
-    @Post(':id/intervenciones')
-    addIntervencion(
-        @Param('id', ParseUUIDPipe) id: string,
-        @Body() addRelationDto: AddRelationDto, // DTO que contiene el 'relationId' de la intervención
-    ) {
-        return this.nocsService.addIntervencion(id, addRelationDto.relationId);
-    }
+  @Post(':id/intervenciones')
+  addIntervencion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() addRelationDto: AddRelationDto, // DTO que contiene el 'relationId' de la intervención
+  ) {
+    return this.nocsService.addIntervencion(id, addRelationDto.relationId);
+  }
 }

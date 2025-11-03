@@ -1,5 +1,6 @@
 // src/diagnostico-nanda/dto/create-diagnostico-nanda.dto.ts
 
+import { Optional } from '@nestjs/common';
 import { IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateDiagnosticoNandaDto {
@@ -20,18 +21,6 @@ export class CreateDiagnosticoNandaDto {
   @IsString()
   @IsNotEmpty()
   definicion: string;
-
-  @IsString()
-  @IsNotEmpty()
-  enfoque: string;
-
-  @IsString()
-  @IsNotEmpty()
-  necesidad: string;
-
-  @IsString()
-  @IsNotEmpty()
-  patron: string;
 
   // Para los campos que son arreglos de texto
   @IsArray({ message: 'Las observaciones deben ser un arreglo.' })

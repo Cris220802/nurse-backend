@@ -7,13 +7,29 @@ export class Book {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column('text',{
-        unique: true
+    @Column('varchar', {
+        unique: true,
+        length: 255
     })
-    name: string;
+    title: string;
+
+    @Column('varchar', {
+        length: 255
+    })
+    author: string;
 
     @Column('text', {
-        unique: true
+        nullable: true
     })
-    image: string;
+    description: string;
+
+    @Column('varchar', {
+        comment: 'Filename of the cover image'
+    })
+    coverImage: string;
+
+    @Column('varchar', {
+        comment: 'Filename of the book PDF'
+    })
+    bookFile: string;
 }
