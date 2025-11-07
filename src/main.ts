@@ -14,11 +14,21 @@ async function bootstrap() {
     })
   );
 
-   // 👇 AQUÍ ESTÁ LA CONFIGURACIÓN DE CORS
+  const allowedOrigins = [
+    // Tu frontend en Render
+    'https://nurse-frontend-9f9g.onrender.com', 
+    
+    // desarrollo local
+    'http://localhost:5173', 
+    
+    // Orígen para desarrollo móvil 
+    'http://localhost',
+  ];
+
   app.enableCors({
-    origin: 'http://localhost:5173', // El origen de tu frontend
+    origin: 'http://localhost:5173', 
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, // Permite que el frontend envíe cookies si es necesario
+    credentials: true, 
   });
 
   await app.listen(process.env.PORT ?? 3000);
