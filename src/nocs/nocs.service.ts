@@ -108,10 +108,10 @@ export class NocsService {
 
   }
 
-  async findAll(paginationDto: PaginationDto): Promise<ResultadoNoc[]> {
+  async findAll(paginationDto: PaginationDto): Promise<{ data: ResultadoNoc[], total: number }> {
     const { limit = 10, offset = 0 } = paginationDto;
 
-    const resultados = await this.resultadoNocRepository
+    const [resultados, total] = await this.resultadoNocRepository
       .createQueryBuilder('resultado')
       .select([
         'resultado.id',
@@ -121,7 +121,23 @@ export class NocsService {
 
       .skip(offset)
       .take(limit)
-      .getMany(); // Ejecuta la consulta
+      .getManyAndCount(); // Ejecuta la consulta
+
+    return {
+      data: resultados,
+      total: total,
+    };
+  }
+
+  async findAllRaw(): Promise<ResultadoNoc[]> {
+    const resultados = await this.resultadoNocRepository
+      .createQueryBuilder('resultado')
+      .select([
+        'resultado.id',
+        'resultado.codigo_resultado',
+        'resultado.nombre_resultado',
+      ])
+      .getMany();
 
     return resultados;
   }

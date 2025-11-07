@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { NicsService } from './nics.service';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { CreateIntervencionNicDto } from './dto/create-nic.dto';
@@ -7,12 +7,14 @@ import { CreateCampoNicDto } from './dto/create-campo.dto';
 import { CreateActividadNicDto } from './dto/create-actividad.dto';
 import { UpdateNicDto } from './dto/update-nic.dto';
 import { AddRelationDto } from 'src/common/dtos/add-relation.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('nics')
 export class NicsController {
   constructor(private readonly nicsService: NicsService) { }
 
   // --- Endpoints de Clases ---
+  @UseGuards(JwtAuthGuard)
   @Post('/clase')
   createClase(@Body() createClaseNicDto: CreateClaseNicDto) {
     return this.nicsService.createClase(createClaseNicDto);
@@ -24,6 +26,7 @@ export class NicsController {
   }
 
   // --- Endpoints de Campos ---
+  @UseGuards(JwtAuthGuard)
   @Post('/campo')
   createCampo(@Body() createCampoNicDto: CreateCampoNicDto) {
     return this.nicsService.createCampo(createCampoNicDto);
@@ -35,6 +38,7 @@ export class NicsController {
   }
 
   // --- Endpoints de Actividades ---
+  @UseGuards(JwtAuthGuard)
   @Post('/actividad')
   createActividad(@Body() createActividadNicDto: CreateActividadNicDto) {
     return this.nicsService.createActividad(createActividadNicDto);
@@ -46,6 +50,7 @@ export class NicsController {
   }
 
   // --- Endpoints de Intervenciones Nic (CRUD Principal) ---
+  @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() createIntervencionNicDto: CreateIntervencionNicDto) {
     return this.nicsService.create(createIntervencionNicDto);
@@ -56,11 +61,17 @@ export class NicsController {
     return this.nicsService.findAll(paginationDto);
   }
 
+  @Get('all')
+  findAllRaw() {
+    return this.nicsService.findAllRaw();
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.nicsService.findOne(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -71,6 +82,7 @@ export class NicsController {
   }
 
   // --- MODIFICADO ---
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     // Corregido: Pasamos 'id' como string, no como número
@@ -78,6 +90,7 @@ export class NicsController {
   }
 
   // Endpoint para añadir una Intervención a un Diagnóstico
+  @UseGuards(JwtAuthGuard)
   @Post(':id/diagnosticos')
   addDiagnostico(
     @Param('id', ParseUUIDPipe) id: string,
@@ -87,6 +100,7 @@ export class NicsController {
   }
 
   // Endpoint para añadir un Resultado a un Diagnóstico
+  @UseGuards(JwtAuthGuard)
   @Post(':id/resultados')
   addResultado(
     @Param('id', ParseUUIDPipe) id: string,

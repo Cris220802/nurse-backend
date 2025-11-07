@@ -73,9 +73,9 @@ export class NandasService {
     return this.diagnosticoNandaRepository.save(nuevoDiagnostico)
   }
 
-  async findAll(paginationDto: PaginationDto): Promise<DiagnosticoNanda[]> {
+  async findAll(paginationDto: PaginationDto): Promise<{ data: DiagnosticoNanda[], total: number }> {
     const { limit = 10, offset = 0 } = paginationDto;
-    const diagnosticos = await this.diagnosticoNandaRepository
+    const [diagnosticos, total] = await this.diagnosticoNandaRepository
       .createQueryBuilder('diagnostico') // 'diagnostico' es el alias
 
       // --- MODIFICACIÓN CLAVE ---
@@ -88,33 +88,23 @@ export class NandasService {
 
       .skip(offset)
       .take(limit)
-      .getMany(); // Ejecuta la consulta
-    // const queryBuilder = this.diagnosticoNandaRepository.createQueryBuilder('diagnostico');
+      .getManyAndCount();
 
+    return {
+      data: diagnosticos,
+      total: total,
+    };
+  }
 
-    // const diagnosticos = await queryBuilder
-    //   // // 1. Unimos y seleccionamos la relación con 'clase'
-    //   // .leftJoinAndSelect('diagnostico.clase', 'clase')
-    //   // .leftJoinAndSelect('diagnostico.necesidad', 'necesidad')
-    //   // .leftJoinAndSelect('diagnostico.patron', 'patron')
-    //   // // 2. Desde 'clase', unimos y seleccionamos la relación anidada con 'dominio'
-    //   // .leftJoinAndSelect('clase.dominio', 'dominio')
-    //   // .leftJoin('diagnostico.intervenciones', 'intervencion')
-    //   // .leftJoin('diagnostico.resultados', 'resultado')
-    //   // // 3. Seleccionamos los campos específicos que queremos
-    //   // .select([
-    //   //   'diagnostico', // <-- Trae todos los campos de la entidad principal
-    //   //   'clase.id', 'clase.numero', 'clase.nombre', // <-- Solo los campos que quieres de Clase
-    //   //   'dominio.id', 'dominio.numero', 'dominio.nombre', // <-- Solo los campos que quieres de Dominio
-    //   //   'necesidad.id', 'necesidad.categoria', 'necesidad.nombre',
-    //   //   'patron.id', 'patron.categoria', 'patron.nombre',
-    //   //   'intervencion.id', 'intervencion.codigo_intervencion', 'intervencion.nombre_intervencion',
-    //   //   'resultado.id', 'resultado.codigo_resultado', 'resultado.nombre_resultado'
-    //   // ])
-    //   .skip(offset)
-    //   .take(limit)
-    //   .getMany(); // <-- Ejecuta la consulta y obtiene las entidades
-
+  async findAllRaw(): Promise<DiagnosticoNanda[]> {
+    const diagnosticos = await this.diagnosticoNandaRepository
+      .createQueryBuilder('diagnostico')
+      .select([
+        'diagnostico.id',
+        'diagnostico.codigo_diagnostico',
+        'diagnostico.nombre_diagnostico',
+      ])
+      .getMany(); 
     return diagnosticos;
   }
 
@@ -153,15 +143,15 @@ export class NandasService {
   }
 
   async update(id: string, updateNandaDto: UpdateNandaDto): Promise<DiagnosticoNanda> {
-    
+
     // 1. Destructuramos TODOS los IDs de relaciones
-    const { 
-      claseId, 
-      necesidadId, 
-      patronId, 
+    const {
+      claseId,
+      necesidadId,
+      patronId,
       intervencionesIds, // <-- NUEVO
       resultadosIds,     // <-- NUEVO
-      ...diagnosticoDetails 
+      ...diagnosticoDetails
     } = updateNandaDto;
 
     // 2. Usamos 'preload' para fusionar los campos simples (nombre, definicion, etc.)
@@ -204,15 +194,15 @@ export class NandasService {
         diagnostico.intervenciones = [];
       } else {
         // Si tiene IDs, buscamos las entidades correspondientes
-        const intervenciones = await this.intervencionNicRepository.findBy({ 
-          id: In(intervencionesIds) 
+        const intervenciones = await this.intervencionNicRepository.findBy({
+          id: In(intervencionesIds)
         });
-        
+
         // Validación: Aseguramos que todos los IDs enviados fueron encontrados
         if (intervenciones.length !== intervencionesIds.length) {
           throw new BadRequestException('Uno o más IDs de Intervenciones (NIC) no son válidos.');
         }
-        
+
         // Asignamos el array de entidades. TypeORM se encargará de
         // actualizar la tabla intermedia (unir-desunir) al guardar.
         diagnostico.intervenciones = intervenciones;
@@ -225,14 +215,14 @@ export class NandasService {
       if (resultadosIds.length === 0) {
         diagnostico.resultados = [];
       } else {
-        const resultados = await this.resultadoNocRepository.findBy({ 
-          id: In(resultadosIds) 
+        const resultados = await this.resultadoNocRepository.findBy({
+          id: In(resultadosIds)
         });
 
         if (resultados.length !== resultadosIds.length) {
           throw new BadRequestException('Uno o más IDs de Resultados (NOC) no son válidos.');
         }
-        
+
         diagnostico.resultados = resultados;
       }
     }
@@ -246,7 +236,7 @@ export class NandasService {
   }
 
   async remove(id: string): Promise<void> {
-    
+
     // 1. Reutilizamos findOne(id) para cargar la entidad Y SUS RELACIONES.
     // Esto ya lanza NotFoundException si no lo encuentra.
     const diagnostico = await this.findOne(id);
@@ -423,7 +413,7 @@ export class NandasService {
     }
 
     if (error.code === '23503') {
-        throw new BadRequestException(`No se puede eliminar: el registro está siendo utilizado por otras entidades. Detalle: ${error.detail}`);
+      throw new BadRequestException(`No se puede eliminar: el registro está siendo utilizado por otras entidades. Detalle: ${error.detail}`);
     }
 
     throw new InternalServerErrorException('Unexpected error creating book. Check server logs.');

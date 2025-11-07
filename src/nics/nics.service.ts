@@ -96,10 +96,10 @@ export class NicsService {
     }
   }
 
-  async findAll(paginationDto: PaginationDto): Promise<IntervencionNic[]> {
+  async findAll(paginationDto: PaginationDto): Promise<{ data: IntervencionNic[], total: number }> {
     const { limit = 10, offset = 0 } = paginationDto;
 
-    const intervenciones = await this.intervencionNicRepository
+    const [intervenciones, total] = await this.intervencionNicRepository
       .createQueryBuilder('intervencion') // 'diagnostico' es el alias
 
       // --- MODIFICACIÓN CLAVE ---
@@ -112,7 +112,24 @@ export class NicsService {
 
       .skip(offset)
       .take(limit)
-      .getMany(); // Ejecuta la consulta
+      .getManyAndCount(); // Ejecuta la consulta
+
+    return {
+      data: intervenciones,
+      total: total,
+    };
+  }
+
+  async findAllRaw(): Promise<IntervencionNic[]> {
+    const intervenciones = await this.intervencionNicRepository
+      .createQueryBuilder('intervencion') 
+      .select([
+        'intervencion.id',
+        'intervencion.codigo_intervencion',
+        'intervencion.nombre_intervencion',
+      ])
+
+      .getMany(); 
 
     return intervenciones;
   }

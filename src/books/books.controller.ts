@@ -1,15 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseInterceptors, UploadedFiles, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseInterceptors, UploadedFiles, BadRequestException, InternalServerErrorException, UseGuards } from '@nestjs/common';
 import { BooksService } from './books.service';
 import { CreateBookDto } from './dto/create-book.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('books')
 export class BooksController {
   constructor(private readonly booksService: BooksService) { }
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'coverImage', maxCount: 1 },
@@ -21,9 +23,7 @@ export class BooksController {
   ) {
     const { coverImage, bookPdf } = files;
 
-    if (!coverImage || !coverImage[0] || !bookPdf || !bookPdf[0]) {
-      throw new BadRequestException('Faltan archivos (se requiere coverImage y bookPdf)');
-    }
+    if (!coverImage || !coverImage[0] || !bookPdf || !bookPdf[0]) throw new BadRequestException('Faltan archivos (se requiere coverImage y bookPdf)');
 
     return this.booksService.create(createBookDto, coverImage[0], bookPdf[0]);
   }
@@ -38,6 +38,7 @@ export class BooksController {
     return this.booksService.findOne(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   @UseInterceptors(FileFieldsInterceptor(
     [
@@ -68,6 +69,7 @@ export class BooksController {
     return this.booksService.update(id, updateBookDto, files);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.booksService.remove(id);

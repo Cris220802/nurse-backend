@@ -1,6 +1,6 @@
 // nandas.controller.ts
 
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { NandasService } from './nandas.service';
 import { CreateDiagnosticoNandaDto } from './dto/create-nanda.dto';
 import { UpdateNandaDto } from './dto/update-nanda.dto';
@@ -10,6 +10,7 @@ import { CreateClaseNandaDto } from './dto/create-clase.dto';
 import { CreateNecesidadNandaDto } from './dto/create-necesidad.dto';
 import { CreatePatronNandaDto } from './dto/create-patron.dto';
 import { AddRelationDto } from 'src/common/dtos/add-relation.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('nandas')
 export class NandasController {
@@ -18,6 +19,7 @@ export class NandasController {
   // --- RUTAS ESPECÍFICAS ---
 
   // Endpoints de dominios
+  @UseGuards(JwtAuthGuard)
   @Post('/dominio') // <-- Ruta estática
   createDominio(@Body() createDominioNandaDto: CreateDominioNandaDto) {
     return this.nandasService.createDominio(createDominioNandaDto);
@@ -29,6 +31,7 @@ export class NandasController {
   }
 
   // Endpoints de clases
+  @UseGuards(JwtAuthGuard)
   @Post('/clase') // <-- Ruta estática
   createClase(@Body() createClaseNandaDto: CreateClaseNandaDto) {
     return this.nandasService.createClase(createClaseNandaDto);
@@ -40,6 +43,7 @@ export class NandasController {
   }
 
   // Endpoints de necesidades
+  @UseGuards(JwtAuthGuard)
   @Post('/necesidad') // <-- Ruta estática
   createNecesidad(@Body() createNecesidadNandaDto: CreateNecesidadNandaDto) {
     return this.nandasService.createNecesidad(createNecesidadNandaDto);
@@ -52,6 +56,7 @@ export class NandasController {
 
   // Endpoints de patrones
   @Post('/patron') // <-- Ruta estática
+  @UseGuards(JwtAuthGuard)
   createPatron(@Body() createPatronNandaDto: CreatePatronNandaDto) {
     return this.nandasService.createPatron(createPatronNandaDto);
   }
@@ -64,6 +69,7 @@ export class NandasController {
   // --- RUTAS GENERALES Y DINÁMICAS DESPUÉS ---
 
   // Endpoints de diagnosticos
+  @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() createDiagnosticoNandaDto: CreateDiagnosticoNandaDto) {
     return this.nandasService.create(createDiagnosticoNandaDto);
@@ -74,11 +80,17 @@ export class NandasController {
     return this.nandasService.findAll(paginationDto);
   }
 
+  @Get('all') 
+  findAllRaw() {
+    return this.nandasService.findAllRaw();
+  }
+
   @Get(':id') // <-- Ruta dinámica/comodín AHORA ESTÁ AL FINAL
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.nandasService.findOne(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -88,6 +100,7 @@ export class NandasController {
   }
 
   // --- MODIFICADO ---
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.nandasService.remove(id);
