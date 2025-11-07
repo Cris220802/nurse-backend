@@ -26,9 +26,20 @@ async function bootstrap() {
   ];
 
   app.enableCors({
-    origin: 'http://localhost:5173', 
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, 
+    origin: (origin, callback) => {
+      // Permite peticiones sin 'origin' (como apps móviles nativas o Postman)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origen no permitido por CORS'));
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
   });
 
   await app.listen(process.env.PORT ?? 3000);
