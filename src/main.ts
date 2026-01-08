@@ -17,7 +17,7 @@ async function bootstrap() {
 
   const allowedOrigins = [
     // Tu frontend en Render
-    'https://nurse-frontend-9f9g.onrender.com', 
+    'https://nurse-frontend-1gg4.onrender.com', 
     
     // desarrollo local
     'http://localhost:5173', 
