@@ -7,4 +7,7 @@ export class CreateUserDto {
     @IsString()
     @MinLength(6)
     password: string;
+
+    @IsString()
+    registerPassword: string;
 }

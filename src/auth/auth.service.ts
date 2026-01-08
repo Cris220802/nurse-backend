@@ -3,6 +3,7 @@ import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -10,6 +11,7 @@ export class AuthService {
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
+        private readonly configService: ConfigService,
     ) { }
 
     async validateUser(email: string, pass: string): Promise<any> {
@@ -31,6 +33,11 @@ export class AuthService {
 
     async register(createUserDto: CreateUserDto) {
     try {
+
+      if (createUserDto.registerPassword !== this.configService.get<string>('REGISTER_PASSWORD')) {
+        throw new Error(`Error en el registro.`);
+      }
+      
       const newUser = await this.usersService.create(createUserDto);
 
       return this.login(newUser);
