@@ -63,14 +63,20 @@ export class NandasService {
     if (!patron) throw new NotFoundException(`La patron con el ID "${patron}" no fue encontrado.`);
 
     // Creamos la instancia de ClaseNanda
-    const nuevoDiagnostico = this.diagnosticoNandaRepository.create({
-      ...diagnosticoNandaDetails,
-      clase,
-      necesidad,
-      patron
-    });
+    try {
+      const nuevoDiagnostico = this.diagnosticoNandaRepository.create({
+        ...diagnosticoNandaDetails,
+        clase,
+        necesidad,
+        patron
+      });
 
-    return this.diagnosticoNandaRepository.save(nuevoDiagnostico)
+      return this.diagnosticoNandaRepository.save(nuevoDiagnostico)
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
+
+
   }
 
   async findAll(paginationDto: PaginationDto): Promise<{ data: DiagnosticoNanda[], total: number }> {
@@ -104,7 +110,7 @@ export class NandasService {
         'diagnostico.codigo_diagnostico',
         'diagnostico.nombre_diagnostico',
       ])
-      .getMany(); 
+      .getMany();
     return diagnosticos;
   }
 
@@ -310,7 +316,11 @@ export class NandasService {
       dominio: dominio,
     });
 
-    return this.claseNandaRepository.save(nuevaClase);
+    try {
+      return this.claseNandaRepository.save(nuevaClase);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
   }
 
   async findAllClases(paginationDto: PaginationDto): Promise<ClaseNanda[]> {
@@ -409,6 +419,7 @@ export class NandasService {
     this.logger.error(error);
 
     if (error.code === '23505') {
+
       throw new BadRequestException(error.detail);
     }
 

@@ -344,7 +344,12 @@ export class NocsService {
       dominio: dominio,
     });
 
-    return await this.claseNocRepository.save(nuevaClase);
+    try {
+      return await this.claseNocRepository.save(nuevaClase);
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
+
   }
 
   async findAllClases(paginationDto: PaginationDto): Promise<ClaseNoc[]> {
