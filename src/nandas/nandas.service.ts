@@ -71,7 +71,7 @@ export class NandasService {
         patron
       });
 
-      return this.diagnosticoNandaRepository.save(nuevoDiagnostico)
+      return await this.diagnosticoNandaRepository.save(nuevoDiagnostico)
     } catch (error) {
       this.handleDBExceptions(error);
     }
@@ -317,7 +317,7 @@ export class NandasService {
     });
 
     try {
-      return this.claseNandaRepository.save(nuevaClase);
+      return await this.claseNandaRepository.save(nuevaClase);
     } catch (error) {
       this.handleDBExceptions(error);
     }
