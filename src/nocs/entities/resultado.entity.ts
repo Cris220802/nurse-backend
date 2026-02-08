@@ -5,6 +5,7 @@ import { Especialidad } from "src/especialidades/entities/especialidad.entity";
 import { IndicadorNoc } from "./indicador.entity";
 import { DiagnosticoNanda } from "src/nandas/entities/diagnostico.entity";
 import { IntervencionNic } from "src/nics/entities/intervencion.entity";
+import { EscalaNoc } from "./escala.entity";
 
 @Entity()
 export class ResultadoNoc {
@@ -31,7 +32,7 @@ export class ResultadoNoc {
     // Relacion Indicador Muchos a muchos
     @ManyToMany(() => IndicadorNoc)
     @JoinTable() // <-- Esto crea la tabla intermedia 
-    indicadores:IndicadorNoc[];
+    indicadores: IndicadorNoc[];
 
     // Relacion Especialidad Muchos a muchos
     @ManyToMany(() => Especialidad)
@@ -61,4 +62,14 @@ export class ResultadoNoc {
 
     @ManyToMany(() => IntervencionNic, (intervencion) => intervencion.resultados)
     intervenciones: IntervencionNic[]; // Nota: El @JoinTable está en el otro lado (Nic)
+
+    @ManyToOne(
+        () => EscalaNoc,
+        (escala) => escala.resultados,
+        { eager: true } // Para que siempre traiga la escala si consultamos el resultado
+    )
+    escala: EscalaNoc;
+
+    @Column('int', { nullable: true })
+    puntuacion_objetivo: number;
 }

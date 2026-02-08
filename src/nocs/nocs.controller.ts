@@ -8,6 +8,7 @@ import { CreateClaseNocDto } from './dto/create-clase.dto';
 import { CreateIndicadorNocDto } from './dto/create-indicador.dto';
 import { CreatePatronNocDto } from './dto/create-patron.dto';
 import { AddRelationDto } from 'src/common/dtos/add-relation.dto';
+import { CreateEscalaDto } from './dto/create-escala.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('nocs')
@@ -18,12 +19,12 @@ export class NocsController {
 
   // Endpoints de dominios
   @UseGuards(JwtAuthGuard)
-  @Post('/dominio') 
+  @Post('/dominio')
   createDominio(@Body() createDominioNocDto: CreateDominioNocDto) {
     return this.nocsService.createDominio(createDominioNocDto);
   }
 
-  @Get('/dominio') 
+  @Get('/dominio')
   findAllDom(@Query() paginationDto: PaginationDto) {
     return this.nocsService.findAllDominios(paginationDto);
   }
@@ -64,6 +65,24 @@ export class NocsController {
     return this.nocsService.findAllPatrones(paginationDto);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('/escala')
+  createEscala(@Body() createEscalaDto: CreateEscalaDto) {
+    return this.nocsService.createEscala(createEscalaDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/escala')
+  findAllEscalas() {
+    return this.nocsService.findAllEscalas();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('/escala/:id')
+  removeEscala(@Param('id', ParseUUIDPipe) id: string) {
+    return this.nocsService.removeEscala(id);
+  }
+
   // Endpoints de Resultados Noc
   @UseGuards(JwtAuthGuard)
   @Post()
@@ -89,17 +108,17 @@ export class NocsController {
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
-    @Param('id', ParseUUIDPipe) id: string, 
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateNocDto: UpdateNocDto
   ) {
-    return this.nocsService.update(id, updateNocDto); 
+    return this.nocsService.update(id, updateNocDto);
   }
 
   // --- MODIFICADO ---
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) { 
-    return this.nocsService.remove(id); 
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.nocsService.remove(id);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -16,6 +16,9 @@ import { CreatePatronNocDto } from './dto/create-patron.dto';
 import { Especialidad } from 'src/especialidades/entities/especialidad.entity';
 import { DiagnosticoNanda } from 'src/nandas/entities/diagnostico.entity';
 import { IntervencionNic } from 'src/nics/entities/intervencion.entity';
+import { EscalaNoc } from './entities/escala.entity';
+import { CreateEscalaDto } from './dto/create-escala.dto';
+import { NivelEscala } from './entities/nivel-escala.entity';
 
 @Injectable()
 export class NocsService {
@@ -49,6 +52,9 @@ export class NocsService {
     @InjectRepository(IntervencionNic)
     private readonly intervencionNicRepository: Repository<IntervencionNic>,
 
+    @InjectRepository(EscalaNoc)
+    private readonly escalaNocRepository: Repository<EscalaNoc>,
+
   ) { }
 
   // Services de Noc
@@ -58,6 +64,7 @@ export class NocsService {
       patronId,
       indicadoresIds,
       especialidadesIds,
+      escalaId,
       ...resultadoDetails // El resto de propiedades del DTO
     } = createResultadoNocDto;
 
@@ -75,6 +82,21 @@ export class NocsService {
     if (!patron) throw new NotFoundException(`El patrón con ID "${patronId}" no fue encontrado.`);
 
     newResultado.patron = patron;
+
+    // 3.1. Asignar la relación ManyToOne con EscalaNoc
+    const escala = await this.escalaNocRepository.findOne({
+      where: { id: escalaId },
+      relations: { niveles: true }
+    });
+    if (!escala) throw new NotFoundException(`La escala con ID "${escalaId}" no fue encontrada.`);
+
+    // Validar que la puntuacion_objetivo exista dentro de los niveles de la escala
+    const nivelValido = escala.niveles.some(nivel => nivel.puntuacion === resultadoDetails.puntuacion_objetivo);
+    if (!nivelValido) {
+      throw new BadRequestException(`La puntuación objetivo "${resultadoDetails.puntuacion_objetivo}" no es válida para la escala seleccionada.`);
+    }
+
+    newResultado.escala = escala;
 
     // 4. Asignar las relaciones ManyToMany con IndicadorNoc (si se proporcionaron IDs)
     if (indicadoresIds && indicadoresIds.length > 0) {
@@ -154,14 +176,19 @@ export class NocsService {
       .leftJoin('resultado.especialidades', 'especialidad')
       .leftJoin('resultado.diagnosticos', 'diagnostico')
       .leftJoin('resultado.intervenciones', 'intervencion')
+      .leftJoinAndSelect('resultado.escala', 'escala')
+      .leftJoinAndSelect('escala.niveles', 'nivel')
       // Seleccionamos la entidad principal COMPLETA y los campos específicos de las relaciones
       .select([
-        'resultado',
+        'resultado.id', 'resultado.codigo_resultado', 'resultado.nombre_resultado',
+        'resultado.definicion', 'resultado.edicion', 'resultado.puntuacion_objetivo',
         'clase.id', 'clase.nombre',
         'patron.id', 'patron.nombre',
         'dominio.id', 'dominio.numero', 'dominio.nombre',
         'indicador.id', 'indicador.codigo', 'indicador.nombre',
         'especialidad.id', 'especialidad.especialidad',
+        'escala.id', 'escala.codigo',
+        'nivel.id', 'nivel.puntuacion', 'nivel.texto',
         'diagnostico.id', 'diagnostico.codigo_diagnostico', 'diagnostico.nombre_diagnostico',
         'intervencion.id', 'intervencion.codigo_intervencion', 'intervencion.nombre_intervencion'
       ])
@@ -184,6 +211,7 @@ export class NocsService {
       especialidadesIds,
       diagnosticosIds,    // <-- NUEVO
       intervencionesIds,  // <-- NUEVO
+      escalaId,
       ...resultadoDetails
     } = updateNocDto;
 
@@ -207,6 +235,25 @@ export class NocsService {
       const patron = await this.patronNocRepository.findOneBy({ id: patronId });
       if (!patron) throw new NotFoundException(`Patrón con ID "${patronId}" no encontrado.`);
       resultado.patron = patron;
+    }
+
+    // 3.1 Manejo de Escala y Puntuación Objetivo
+    if (escalaId || resultadoDetails.puntuacion_objetivo) {
+      const escalaToUse = escalaId
+        ? await this.escalaNocRepository.findOne({ where: { id: escalaId }, relations: { niveles: true } })
+        : await this.escalaNocRepository.findOne({ where: { id: resultado.escala.id }, relations: { niveles: true } });
+
+      if (!escalaToUse) throw new NotFoundException(`Escala no encontrada.`);
+
+      const targetScore = resultadoDetails.puntuacion_objetivo || resultado.puntuacion_objetivo;
+
+      const nivelValido = escalaToUse.niveles.some(nivel => nivel.puntuacion === targetScore);
+
+      if (!nivelValido) {
+        throw new BadRequestException(`La puntuación objetivo "${targetScore}" no es válida para la escala vinculada.`);
+      }
+
+      if (escalaId) resultado.escala = escalaToUse;
     }
 
     // 4. Manejo de Relaciones ManyToMany (Indicadores)
@@ -442,6 +489,43 @@ export class NocsService {
     })
 
     return patrones;
+  }
+
+  // Services de Escala
+  async createEscala(createEscalaDto: CreateEscalaDto): Promise<EscalaNoc> {
+    try {
+      const { niveles, ...escalaDetails } = createEscalaDto;
+      const escala = this.escalaNocRepository.create({
+        ...escalaDetails,
+        niveles: niveles.map(nivel => this.escalaNocRepository.manager.create(NivelEscala, nivel))
+      });
+      await this.escalaNocRepository.save(escala);
+      return escala;
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
+  }
+
+  async findAllEscalas(): Promise<EscalaNoc[]> {
+    return await this.escalaNocRepository.find({
+      relations: { niveles: true },
+      order: { codigo: 'ASC' }
+    });
+  }
+
+  async removeEscala(id: string): Promise<void> {
+    const escala = await this.escalaNocRepository.findOne({
+      where: { id },
+      relations: { resultados: true }
+    });
+
+    if (!escala) throw new NotFoundException(`Escala con ID "${id}" no encontrada.`);
+
+    if (escala.resultados && escala.resultados.length > 0) {
+      throw new BadRequestException(`No se puede eliminar la escala porque tiene ${escala.resultados.length} resultados asociados.`);
+    }
+
+    await this.escalaNocRepository.remove(escala);
   }
 
   private handleDBExceptions(error: any): never {

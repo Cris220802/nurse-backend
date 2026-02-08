@@ -10,6 +10,8 @@ import { PatronNoc } from './entities/patron.entity';
 import { Especialidad } from 'src/especialidades/entities/especialidad.entity';
 import { DiagnosticoNanda } from 'src/nandas/entities/diagnostico.entity';
 import { IntervencionNic } from 'src/nics/entities/intervencion.entity';
+import { EscalaNoc } from './entities/escala.entity';
+import { NivelEscala } from './entities/nivel-escala.entity';
 
 @Module({
   controllers: [NocsController],
@@ -23,7 +25,9 @@ import { IntervencionNic } from 'src/nics/entities/intervencion.entity';
       IndicadorNoc,
       PatronNoc,
       DiagnosticoNanda,
-      IntervencionNic
+      IntervencionNic,
+      EscalaNoc,
+      NivelEscala
     ])
   ]
 })
