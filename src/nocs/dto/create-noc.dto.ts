@@ -26,7 +26,7 @@ export class CreateResultadoNocDto {
   claseId: string;
 
   @IsUUID('4', { message: 'El ID del patrón debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'Debes proporcionar el ID del patrón.' })
+  @IsOptional()
   patronId: string;
 
   // --- IDs Opcionales para Relaciones Muchos a Muchos ---

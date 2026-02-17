@@ -460,7 +460,10 @@ export class NicsService {
       // 4. Actividades (Upsert Pattern con generación de código Hash)
       const actividades = await this.resolveActividades(manager, data.actividadesRaw);
 
-      // 5. Crear Intervención
+      // 5. Especialidades (Upsert Pattern)
+      const especialidades = await this.resolveEspecialidades(manager, data.especialidadesRaw);
+
+      // 6. Crear Intervención
       const nuevaIntervencion = manager.create(IntervencionNic, {
         codigo_intervencion: data.codigo,
         nombre_intervencion: data.nombre,
@@ -469,7 +472,7 @@ export class NicsService {
         dominio: dominio,
         clase: clase,
         actividades: actividades,
-        especialidades: [], // Opcional: Si el texto trae especialidades, añade un parser similar a NOC
+        especialidades: especialidades,
         // campo: null // Ya no se usa si eliminaste la entidad CampoNic
       });
 
@@ -492,11 +495,14 @@ export class NicsService {
     const domainMatch = text.match(/Dominio\s*\n\s*(\d+)\s+(.+)/i);
     const classMatch = text.match(/Clase\s*\n\s*(\w+)\s+(.+)/i);
 
-    // Definición hasta encontrar "Actividades"
-    const definitionMatch = text.match(/Definición\s*\n\s*([\s\S]+?)(?=\nActividades|\nResultado|$)/i);
+    // Especialidades (se agrega soporte para extraerlas)
+    const specialtiesMatch = text.match(/Especialidades\s*(?:\n|:)\s*([\s\S]+?)(?=\nMostrar menos|\nDefinición|\nActividades|$)/i);
 
-    // Actividades hasta el final
-    const activitiesBlockMatch = text.match(/Actividades\s*\n\s*([\s\S]+?)(?=$)/i);
+    // Definición hasta encontrar "Actividades"
+    const definitionMatch = text.match(/Definición\s*(?:\n|:)\s*([\s\S]+?)(?=\nActividades|\nResultado|$)/i);
+
+    // Actividades hasta el final (más robusto ante separadores)
+    const activitiesBlockMatch = text.match(/Actividades\s*(?:\n|:)\s*([\s\S]+?)(?=$)/i);
 
     // --- LÓGICA DE EXTRACCIÓN DE CÓDIGO Y NOMBRE ---
     let codigo = '';
@@ -547,7 +553,8 @@ export class NicsService {
       claseLetra: classMatch ? classMatch[1].trim() : '',
       claseNombre: classMatch ? classMatch[2].trim() : '',
       definicion: definitionMatch ? definitionMatch[1].trim() : '',
-      actividadesRaw: activitiesBlockMatch ? activitiesBlockMatch[1].trim() : ''
+      actividadesRaw: activitiesBlockMatch ? activitiesBlockMatch[1].trim() : '',
+      especialidadesRaw: specialtiesMatch ? specialtiesMatch[1].trim() : ''
     };
   }
 
@@ -615,6 +622,31 @@ export class NicsService {
       // 2. Recuperar
       const actividad = await manager.findOne(ActividadNic, { where: { codigo: codigoGenerado } });
       if (actividad) entities.push(actividad);
+    }
+    return entities;
+  }
+
+  private async resolveEspecialidades(manager: EntityManager, rawText: string): Promise<Especialidad[]> {
+    if (!rawText) return [];
+
+    const list = rawText.split(/\r?\n/)
+      .map(l => l.trim().replace(/^•\s*/, ''))
+      .filter(l => l.length > 0 && l !== 'Mostrar menos'); // Clean unwanted text
+
+    const entities: Especialidad[] = [];
+
+    for (const nombreEspecialidad of list) {
+      // 1. Insertar (Upsert)
+      await manager.createQueryBuilder()
+        .insert()
+        .into(Especialidad)
+        .values({ especialidad: nombreEspecialidad })
+        .orIgnore()
+        .execute();
+
+      // 2. Recuperar
+      const especialidad = await manager.findOne(Especialidad, { where: { especialidad: nombreEspecialidad } });
+      if (especialidad) entities.push(especialidad);
     }
     return entities;
   }

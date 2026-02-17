@@ -13,7 +13,7 @@ export class ClaseNoc {
     categoria: string;
 
     @Column('text', {
-        unique: true
+        unique: true,
     })
     nombre: string;
 

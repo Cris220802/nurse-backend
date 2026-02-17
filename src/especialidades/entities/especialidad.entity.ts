@@ -8,7 +8,9 @@ export class Especialidad {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column('text')
+    @Column('text', {
+        unique: true,
+    })
     especialidad: string;
 
     @ManyToMany(() => ResultadoNoc, (resultado) => resultado.especialidades)
