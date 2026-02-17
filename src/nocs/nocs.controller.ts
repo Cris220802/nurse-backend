@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards, BadRequestException } from '@nestjs/common';
 import { NocsService } from './nocs.service';
 import { CreateResultadoNocDto } from './dto/create-noc.dto';
 import { UpdateNocDto } from './dto/update-noc.dto';
@@ -128,6 +128,13 @@ export class NocsController {
     @Body() addRelationDto: AddRelationDto, // DTO que contiene el 'relationId' del diagnóstico
   ) {
     return this.nocsService.addDiagnostico(id, addRelationDto.relationId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('import/raw')
+  createFromRawText(@Body('text') text: string) {
+    if (!text) throw new BadRequestException('El texto es requerido.');
+    return this.nocsService.createFromRawText(text);
   }
 
   @UseGuards(JwtAuthGuard)

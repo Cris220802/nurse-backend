@@ -45,7 +45,6 @@ export class CreateResultadoNocDto {
   @IsNotEmpty()
   escalaId: string;
 
-  @IsInt()
-  @Min(1)
-  puntuacion_objetivo: number;
+  @IsOptional()
+  puntuacion_objetivo?: number;
 }

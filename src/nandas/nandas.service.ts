@@ -1,10 +1,10 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { CreateDiagnosticoNandaDto } from './dto/create-nanda.dto';
 import { UpdateNandaDto } from './dto/update-nanda.dto';
 import { CreateDominioNandaDto } from './dto/create-dominio.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DiagnosticoNanda } from './entities/diagnostico.entity';
-import { In, Repository } from 'typeorm';
+import { In, Repository, DataSource, EntityManager } from 'typeorm';
 import { ClaseNanda } from './entities/clase.entity';
 import { DominioNanda } from './entities/dominio.entity';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
@@ -43,6 +43,8 @@ export class NandasService {
 
     @InjectRepository(ResultadoNoc)
     private readonly resultadoNocRepository: Repository<ResultadoNoc>,
+
+    private readonly dataSource: DataSource,
 
   ) { }
 
@@ -428,5 +430,168 @@ export class NandasService {
     }
 
     throw new InternalServerErrorException('Unexpected error creating book. Check server logs.');
+  }
+
+  async createFromRawText(rawText: string): Promise<DiagnosticoNanda> {
+    // Limpieza inicial
+    const cleanText = rawText.replace(/×/g, '').replace(/Ficha del diagnóstico NANDA/g, '').trim();
+
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. Parsing
+      const data = this.parseNandaText(cleanText);
+
+      // Verificación temprana
+      const existingDiagnostico = await manager.findOne(DiagnosticoNanda, { where: { codigo_diagnostico: data.codigo } });
+      if (existingDiagnostico) {
+        throw new ConflictException(`El Diagnóstico NANDA con código "${data.codigo}" ya existe.`);
+      }
+
+      // 2. Dominio (Upsert Pattern)
+      const dominio = await this.findOrCreateDominio(manager, data.dominioNum, data.dominioNombre);
+
+      // 3. Clase (Upsert Pattern)
+      const clase = await this.findOrCreateClase(manager, data.claseNum, data.claseNombre, dominio);
+
+      // 4. Crear Diagnóstico
+      // Nota: 'caracteristicas' y 'factores' son arrays de strings simples en tu entidad,
+      // así que no necesitan tablas relacionadas ni Upserts complejos.
+      const diagnostico = manager.create(DiagnosticoNanda, {
+        codigo_diagnostico: data.codigo,
+        nombre_diagnostico: data.nombre,
+        edicion: null,
+        definicion: data.definicion,
+        observaciones: [],
+        caracteristicas: data.caracteristicas,
+        factores: data.factores,
+        necesidad: null,
+        patron: null,
+        clase
+      });
+
+      try {
+        return await manager.save(diagnostico);
+      } catch (error) {
+        this.logger.error(`Error final guardando Diagnóstico NANDA ${data.codigo}`, error);
+        throw new InternalServerErrorException("Error al guardar la entidad principal.");
+      }
+    });
+  }
+
+  // ---------------------------------------------------------
+  // HELPERS PRIVADOS
+  // ---------------------------------------------------------
+
+  private parseNandaText(text: string) {
+    const domainMatch = text.match(/Dominio\s*\n\s*(\d+)\s+(.+)/i);
+    const classMatch = text.match(/Clase\s*\n\s*(\d+)\s+(.+)/i);
+
+    // Definición: busca hasta encontrar "Características" o "Factores"
+    const definitionMatch = text.match(/Definición\s*\n\s*([\s\S]+?)(?=\nCaracterísticas|\nFactores|\nPoblación|$)/i);
+
+    // Bloques de listas
+    // Busca desde "Características..." hasta encontrar "Factores" o fin de string
+    const characteristicsBlockMatch = text.match(/Características\s*(?:definitorias)?\s*\n\s*([\s\S]+?)(?=\nFactores|\nPoblación|\nProblemas|$)/i);
+
+    // Busca desde "Factores..." hasta el final
+    const factorsBlockMatch = text.match(/Factores\s*(?:relacionados)?\s*\n\s*([\s\S]+?)(?=\nPoblación|\nProblemas|$)/i);
+
+    // --- LÓGICA DE CÓDIGO Y NOMBRE ---
+    let codigo = '';
+    let nombre = '';
+
+    // Intentar obtener de etiqueta explícita
+    const codeLabelMatch = text.match(/Código\s*\n\s*(\d+)/i);
+
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    if (lines.length > 0) {
+      // Caso A: "00132 Dolor agudo" (Todo en línea 1)
+      const oneLineMatch = lines[0].match(/^(\d{5})\s+(.+)$/); // NANDA suele ser de 5 dígitos
+
+      if (oneLineMatch) {
+        codigo = oneLineMatch[1];
+        nombre = oneLineMatch[2];
+      }
+      // Caso B: "00132" línea 1, "Dolor agudo" línea 2
+      else if (/^\d+$/.test(lines[0]) && lines.length > 1) {
+        codigo = lines[0];
+        nombre = lines[1];
+      }
+      // Caso C: Etiqueta explícita
+      else if (codeLabelMatch) {
+        codigo = codeLabelMatch[1];
+        // Buscar nombre: primera línea que no sea palabra reservada ni número
+        const nameLine = lines.find(l =>
+          !l.match(/^(Código|Edición|Dominio|Clase|Definición|Características|Factores)/i) &&
+          !/^\d+$/.test(l) &&
+          l !== codigo
+        );
+        nombre = nameLine || 'Nombre Desconocido';
+      }
+    }
+
+    // Fallback final
+    if (!codigo && codeLabelMatch) codigo = codeLabelMatch[1];
+
+    if (!codigo || !nombre) {
+      throw new BadRequestException("No se pudo extraer el Código o Nombre del Diagnóstico.");
+    }
+
+    // --- PROCESAMIENTO DE LISTAS ---
+    const processList = (raw: string | undefined) => {
+      if (!raw) return [];
+      return raw.split(/\r?\n/)
+        .map(l => l.trim().replace(/^[•\-\*]\s*/, '')) // Quita viñetas
+        .filter(l => l.length > 0);
+    };
+
+    return {
+      codigo,
+      nombre,
+      dominioNum: domainMatch ? parseInt(domainMatch[1].trim()) : 0,
+      dominioNombre: domainMatch ? domainMatch[2].trim() : 'Sin Dominio',
+      claseNum: classMatch ? parseInt(classMatch[1].trim()) : 0,
+      claseNombre: classMatch ? classMatch[2].trim() : 'Sin Clase',
+      definicion: definitionMatch ? definitionMatch[1].trim() : '',
+      caracteristicas: processList(characteristicsBlockMatch?.[1]),
+      factores: processList(factorsBlockMatch?.[1])
+    };
+  }
+
+  private async findOrCreateDominio(manager: EntityManager, numero: number, nombre: string): Promise<DominioNanda> {
+    // Insert or Ignore
+    await manager.createQueryBuilder()
+      .insert()
+      .into(DominioNanda)
+      .values({ numero, nombre })
+      .orIgnore()
+      .execute();
+
+    const dominio = await manager.findOne(DominioNanda, { where: { numero } });
+    if (!dominio) throw new InternalServerErrorException(`Error crítico recuperando Dominio NANDA ${numero}`);
+    return dominio;
+  }
+
+  private async findOrCreateClase(manager: EntityManager, numero: number, nombre: string, dominio: DominioNanda): Promise<ClaseNanda> {
+    // Insert or Ignore
+    // Nota: Asegúrate de que tu entidad ClaseNanda permita 'descripcion' nullable o envía un string vacío
+    await manager.createQueryBuilder()
+      .insert()
+      .into(ClaseNanda)
+      .values({
+        numero,
+        nombre,
+        descripcion: '', // Valor por defecto si es required
+        dominio: { id: dominio.id }
+      })
+      .orIgnore()
+      .execute();
+
+    // Al buscar la clase, idealmente buscamos por nombre dentro del dominio, 
+    // pero como el nombre suele ser único globalmente en NANDA, por nombre está bien.
+    const clase = await manager.findOne(ClaseNanda, { where: { nombre } });
+
+    if (!clase) throw new InternalServerErrorException(`Error crítico recuperando Clase NANDA ${nombre}`);
+    return clase;
   }
 }

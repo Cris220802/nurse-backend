@@ -53,9 +53,9 @@ export class ResultadoNoc {
     @ManyToOne(
         () => PatronNoc,
         (patron) => patron.resultados,
-        { onDelete: 'CASCADE' } // Opcional: si borras una clase, se borran sus diagnósticos.
+        { onDelete: 'CASCADE', nullable: true } // Opcional: si borras una clase, se borran sus diagnósticos.
     )
-    patron: PatronNoc;
+    patron: PatronNoc | null;
 
     @ManyToMany(() => DiagnosticoNanda, (diagnostico) => diagnostico.resultados)
     diagnosticos: DiagnosticoNanda[]; // Nota: El @JoinTable está en el otro lado (Nanda)
@@ -71,5 +71,5 @@ export class ResultadoNoc {
     escala: EscalaNoc;
 
     @Column('int', { nullable: true })
-    puntuacion_objetivo: number;
+    puntuacion_objetivo: number | null;
 }

@@ -3,6 +3,7 @@ import { ActividadNic } from "./actividad.entity";
 import { Especialidad } from "src/especialidades/entities/especialidad.entity";
 import { ClaseNic } from "./clase.entity";
 import { CampoNic } from "./campo.entity";
+import { DominioNic } from "./dominio.entity";
 import { DiagnosticoNanda } from "src/nandas/entities/diagnostico.entity";
 import { ResultadoNoc } from "src/nocs/entities/resultado.entity";
 
@@ -51,9 +52,16 @@ export class IntervencionNic {
     @ManyToOne(
         () => CampoNic,
         (campo) => campo.intervenciones,
-        { onDelete: 'CASCADE' } // Opcional: si borras una clase, se borran sus diagnósticos.
+        { onDelete: 'CASCADE', nullable: true } // Campo ahora es opcional
     )
     campo: CampoNic;
+
+    @ManyToOne(
+        () => DominioNic,
+        (dominio) => dominio.intervenciones,
+        { onDelete: 'CASCADE' }
+    )
+    dominio: DominioNic;
 
     @ManyToMany(() => DiagnosticoNanda, (diagnostico) => diagnostico.intervenciones)
     diagnosticos: DiagnosticoNanda[]; // Nota: El @JoinTable está en el otro lado (Nanda)

@@ -3,10 +3,10 @@ import { CreateResultadoNocDto } from './dto/create-noc.dto';
 import { UpdateNocDto } from './dto/update-noc.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ResultadoNoc } from './entities/resultado.entity';
-import { In, Repository } from 'typeorm';
+import { In, Repository, DataSource, EntityManager } from 'typeorm';
 import { ClaseNoc } from './entities/clase.entity';
 import { DominioNoc } from './entities/dominio.entity';
-import { IndicadorNoc } from './entities/indicador.entity';
+import { Escala, IndicadorNoc } from './entities/indicador.entity';
 import { PatronNoc } from './entities/patron.entity';
 import { CreateClaseNocDto } from './dto/create-clase.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
@@ -55,6 +55,8 @@ export class NocsService {
     @InjectRepository(EscalaNoc)
     private readonly escalaNocRepository: Repository<EscalaNoc>,
 
+    private readonly dataSource: DataSource,
+
   ) { }
 
   // Services de Noc
@@ -68,8 +70,11 @@ export class NocsService {
       ...resultadoDetails // El resto de propiedades del DTO
     } = createResultadoNocDto;
 
-    // 1. Crear la instancia del resultado con los detalles básicos
-    const newResultado = this.resultadoNocRepository.create(resultadoDetails);
+    // 1. Crear la instancia del resultado con los detalles básicos (puntuacion_objetivo se ignora/nulo)
+    const newResultado = this.resultadoNocRepository.create({
+      ...resultadoDetails,
+      puntuacion_objetivo: null
+    });
 
     // 2. Asignar la relación ManyToOne con ClaseNoc
     const clase = await this.claseNocRepository.findOneBy({ id: claseId });
@@ -91,10 +96,10 @@ export class NocsService {
     if (!escala) throw new NotFoundException(`La escala con ID "${escalaId}" no fue encontrada.`);
 
     // Validar que la puntuacion_objetivo exista dentro de los niveles de la escala
-    const nivelValido = escala.niveles.some(nivel => nivel.puntuacion === resultadoDetails.puntuacion_objetivo);
-    if (!nivelValido) {
-      throw new BadRequestException(`La puntuación objetivo "${resultadoDetails.puntuacion_objetivo}" no es válida para la escala seleccionada.`);
-    }
+    // const nivelValido = escala.niveles.some(nivel => nivel.puntuacion === resultadoDetails.puntuacion_objetivo);
+    // if (!nivelValido) {
+    //   throw new BadRequestException(`La puntuación objetivo "${resultadoDetails.puntuacion_objetivo}" no es válida para la escala seleccionada.`);
+    // }
 
     newResultado.escala = escala;
 
@@ -237,23 +242,15 @@ export class NocsService {
       resultado.patron = patron;
     }
 
-    // 3.1 Manejo de Escala y Puntuación Objetivo
-    if (escalaId || resultadoDetails.puntuacion_objetivo) {
-      const escalaToUse = escalaId
-        ? await this.escalaNocRepository.findOne({ where: { id: escalaId }, relations: { niveles: true } })
-        : await this.escalaNocRepository.findOne({ where: { id: resultado.escala.id }, relations: { niveles: true } });
+    // 3.1 Manejo de Escala (Puntuación Objetivo eliminada)
+    if (escalaId) {
+      const escalaToUse = await this.escalaNocRepository.findOne({ where: { id: escalaId }, relations: { niveles: true } });
 
       if (!escalaToUse) throw new NotFoundException(`Escala no encontrada.`);
 
-      const targetScore = resultadoDetails.puntuacion_objetivo || resultado.puntuacion_objetivo;
+      // Validacion de puntuacion_objetivo eliminada
 
-      const nivelValido = escalaToUse.niveles.some(nivel => nivel.puntuacion === targetScore);
-
-      if (!nivelValido) {
-        throw new BadRequestException(`La puntuación objetivo "${targetScore}" no es válida para la escala vinculada.`);
-      }
-
-      if (escalaId) resultado.escala = escalaToUse;
+      resultado.escala = escalaToUse;
     }
 
     // 4. Manejo de Relaciones ManyToMany (Indicadores)
@@ -540,5 +537,249 @@ export class NocsService {
     }
 
     throw new InternalServerErrorException('Unexpected error creating book. Check server logs.');
+  }
+
+  async createFromRawText(rawText: string): Promise<ResultadoNoc> {
+    const cleanText = rawText.replace(/×/g, '').replace(/Ficha del resultado NOC/g, '').trim();
+
+    return await this.dataSource.transaction(async (manager) => {
+      const data = this.parseRawText(cleanText);
+
+      // 1. Verificación inicial
+      const existingResult = await manager.findOne(ResultadoNoc, { where: { codigo_resultado: data.codigo } });
+      if (existingResult) {
+        throw new ConflictException(`El Resultado NOC con código "${data.codigo}" ya existe.`);
+      }
+
+      // 2. Dominio (Upsert Pattern)
+      const dominio = await this.findOrCreateDominio(manager, data.dominioNum, data.dominioNombre);
+
+      // 3. Clase (Upsert Pattern)
+      const clase = await this.findOrCreateClase(manager, data.claseCat, data.claseNombre, dominio);
+
+      // 4. Especialidades (Upsert Pattern)
+      const especialidades = await this.resolveEspecialidades(manager, data.especialidadesRaw);
+
+      // 5. Indicadores (Upsert Pattern - AQUÍ FALLABA ANTES)
+      const indicadores = await this.resolveIndicadores(manager, data.indicadoresRaw);
+
+      // 6. Escala
+      const escala = await this.resolveEscala(manager, data.escalaHeader, data.escalaContent, data.codigo);
+
+      // 7. Guardar Resultado
+      const nuevoResultado = manager.create(ResultadoNoc, {
+        codigo_resultado: data.codigo,
+        nombre_resultado: data.nombre,
+        definicion: data.definicion,
+        edicion: data.edicion,
+        clase: clase,
+        patron: null,
+        escala: escala,
+        especialidades: especialidades,
+        indicadores: indicadores,
+        puntuacion_objetivo: null
+      });
+
+      try {
+        return await manager.save(nuevoResultado);
+      } catch (error) {
+        this.logger.error(`Error final guardando Resultado NOC ${data.codigo}`, error);
+        throw new InternalServerErrorException("Error al guardar la entidad principal.");
+      }
+    });
+  }
+
+  // --- MÉTODOS PRIVADOS DE AYUDA (HELPERS) ---
+
+  private parseRawText(text: string) {
+    // Regex mejorados para ser más permisivos con espacios y saltos de línea
+    const codeMatch = text.match(/Código\s*\n\s*(\d+)/i);
+    const editionMatch = text.match(/Edición\s*\n\s*(.+)/i);
+    const domainMatch = text.match(/Dominio\s*\n\s*(\d+)\s+(.+)/i);
+    const classMatch = text.match(/Clase\s*\n\s*(\w+)\s+(.+)/i);
+
+    // Lookahead (?=...) busca hasta encontrar "Mostrar menos", "Definición" o el final del string si falla lo anterior
+    const specialtiesMatch = text.match(/Especialidades\s*\n\s*([\s\S]+?)(?=\nMostrar menos|\nDefinición|$)/i);
+
+    const definitionMatch = text.match(/Definición\s*\n\s*([\s\S]+?)(?=\nResultado)/i);
+    const nameMatch = text.match(/Resultado\s*\n\s*(.+)/i);
+
+    // Indicadores hasta encontrar "Escala"
+    const indicatorsBlockMatch = text.match(/Indicadores\s*\n\s*([\s\S]+?)(?=\nEscala)/i);
+
+    // Escala toma el resto, tratando de separar el header (si existe) del contenido
+    const scaleBlockMatch = text.match(/Escala\s*(.*)\n([\s\S]+)/i);
+
+    if (!codeMatch || !nameMatch) {
+      throw new BadRequestException("Formato inválido: No se encontró el Código o el Nombre del Resultado.");
+    }
+
+    return {
+      codigo: codeMatch[1].trim(),
+      edicion: editionMatch ? editionMatch[1].trim() : 'Desconocida',
+      dominioNum: domainMatch ? parseInt(domainMatch[1].trim()) : 0,
+      dominioNombre: domainMatch ? domainMatch[2].trim() : 'Sin Dominio',
+      claseCat: classMatch ? classMatch[1].trim() : '',
+      claseNombre: classMatch ? classMatch[2].trim() : '',
+      especialidadesRaw: specialtiesMatch ? specialtiesMatch[1].trim() : '',
+      definicion: definitionMatch ? definitionMatch[1].trim() : '',
+      nombre: nameMatch[1].trim(),
+      indicadoresRaw: indicatorsBlockMatch ? indicatorsBlockMatch[1].trim() : '',
+      escalaHeader: scaleBlockMatch ? scaleBlockMatch[1].trim() : '',
+      escalaContent: scaleBlockMatch ? scaleBlockMatch[2].trim() : ''
+    };
+  }
+
+  private async findOrCreateDominio(manager: EntityManager, numero: number, nombre: string): Promise<DominioNoc> {
+    // 1. Intentamos insertar. Si hay conflicto (duplicado), NO hace nada y NO aborta la transacción.
+    await manager.createQueryBuilder()
+      .insert()
+      .into(DominioNoc)
+      .values({ numero, nombre })
+      .orIgnore() // Esto genera un "ON CONFLICT DO NOTHING"
+      .execute();
+
+    // 2. Ahora es seguro buscarlo, porque sabemos que existe (o existía, o se acaba de crear)
+    const dominio = await manager.findOne(DominioNoc, { where: { numero } });
+
+    if (!dominio) throw new InternalServerErrorException(`Error crítico recuperando Dominio ${numero}`);
+    return dominio;
+  }
+
+  private async findOrCreateClase(manager: EntityManager, categoria: string, nombre: string, dominio: DominioNoc): Promise<ClaseNoc> {
+    // Nota: Para insertar relaciones en QueryBuilder, a veces necesitas pasar el ID explícitamente si la entidad no está guardada,
+    // pero aquí 'dominio' ya viene de la BD.
+    await manager.createQueryBuilder()
+      .insert()
+      .into(ClaseNoc)
+      .values({
+        categoria,
+        nombre,
+        dominio: { id: dominio.id } // Pasamos la relación así
+      })
+      .orIgnore()
+      .execute();
+
+    const clase = await manager.findOne(ClaseNoc, { where: { nombre } });
+    if (!clase) throw new InternalServerErrorException(`Error crítico recuperando Clase ${nombre}`);
+    return clase;
+  }
+
+  private async resolveEspecialidades(manager: EntityManager, rawText: string): Promise<Especialidad[]> {
+    if (!rawText) return [];
+
+    const list = rawText.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    const entities: Especialidad[] = [];
+
+    for (const nombre of list) {
+      // Insertar si no existe, ignorar si existe
+      await manager.createQueryBuilder()
+        .insert()
+        .into(Especialidad)
+        .values({ especialidad: nombre })
+        .orIgnore()
+        .execute();
+
+      // Recuperar
+      // Usamos ILIKE o LOWER para asegurar match insensible a mayúsculas si es Postgres
+      const esp = await manager.createQueryBuilder(Especialidad, 'esp')
+        .where("LOWER(esp.especialidad) = LOWER(:nombre)", { nombre })
+        .getOne();
+
+      if (esp) entities.push(esp);
+    }
+    return entities;
+  }
+
+  private async resolveIndicadores(manager: EntityManager, rawText: string): Promise<IndicadorNoc[]> {
+    if (!rawText) return [];
+
+    const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const entities: IndicadorNoc[] = [];
+
+    for (const line of lines) {
+      const match = line.match(/^(\d+)\s*-\s*(.+)$/);
+      if (match) {
+        const codigo = match[1].trim();
+        const nombre = match[2].trim();
+
+        // ESTA ES LA CORRECCIÓN CLAVE:
+        // En lugar de try { save } catch, usamos insert().orIgnore()
+
+        // Importante: Si tu entidad IndicadorNoc tiene campos obligatorios (como 'escala' enum),
+        // debes proveer un valor por defecto en el insert, aunque luego no se use si ya existía.
+        await manager.createQueryBuilder()
+          .insert()
+          .into(IndicadorNoc)
+          .values({
+            codigo,
+            nombre,
+            escala: Escala.NINGUNO
+          })
+          .orIgnore()
+          .execute();
+
+        // Ahora recuperamos sin miedo a romper la transacción
+        const indicador = await manager.findOne(IndicadorNoc, { where: { codigo } });
+
+        if (indicador) entities.push(indicador);
+      }
+    }
+    return entities;
+  }
+
+  private async resolveEscala(manager: EntityManager, header: string, content: string, codigoResultado: string): Promise<EscalaNoc> {
+    // Parsear niveles del texto plano
+    const nivelesRaw = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const nivelesParsed = nivelesRaw.map(l => {
+      const m = l.match(/^(\d+)\s*-\s*(.+)$/);
+      return m ? { puntuacion: parseInt(m[1]), texto: m[2].trim() } : null;
+    }).filter(n => n !== null) as { puntuacion: number, texto: string }[];
+
+    if (nivelesParsed.length === 0) {
+      // Si no hay escala, podrías lanzar error o retornar null si tu BD lo permite
+      throw new BadRequestException("No se encontraron niveles de escala en el texto.");
+    }
+
+    // 1. Intento por Código (si venía en el header, ej: "Escala m")
+    const scaleCode = header ? header.replace(/^Escala\s*/i, '').trim() : '';
+    if (scaleCode) {
+      const escala = await manager.findOne(EscalaNoc, { where: { codigo: scaleCode } });
+      if (escala) return escala;
+    }
+
+    // 2. Búsqueda profunda (Deep comparison) para encontrar una escala idéntica existente
+    // Traemos todas las escalas con sus niveles. (Ojo: si son miles, esto se debe optimizar con QueryBuilder, pero para <100 escalas está bien)
+    const todasEscalas = await manager.find(EscalaNoc, { relations: { niveles: true } });
+
+    for (const s of todasEscalas) {
+      if (s.niveles.length === nivelesParsed.length) {
+        // Ordenamos ambos arreglos para comparar 1 a 1
+        const sNiveles = s.niveles.sort((a, b) => a.puntuacion - b.puntuacion);
+        const pNiveles = [...nivelesParsed].sort((a, b) => a.puntuacion - b.puntuacion);
+
+        let match = true;
+        for (let i = 0; i < sNiveles.length; i++) {
+          // Comparamos puntuación y texto (usando includes o igual estricto según prefieras)
+          if (sNiveles[i].puntuacion !== pNiveles[i].puntuacion || sNiveles[i].texto.trim() !== pNiveles[i].texto.trim()) {
+            match = false;
+            break;
+          }
+        }
+        if (match) return s; // ¡Encontramos una escala idéntica! La reutilizamos.
+      }
+    }
+
+    // 3. Crear nueva escala si no existe
+    // Generamos un código único si no venía uno. Usamos timestamp o un hash simple.
+    const newCode = scaleCode || `GEN-${codigoResultado}-${Date.now().toString().slice(-4)}`;
+
+    const nuevaEscala = manager.create(EscalaNoc, {
+      codigo: newCode,
+      descripcion: `Escala generada para resultado ${codigoResultado}`,
+      niveles: nivelesParsed.map(n => manager.create(NivelEscala, n))
+    });
+
+    return await manager.save(nuevaEscala);
   }
 }

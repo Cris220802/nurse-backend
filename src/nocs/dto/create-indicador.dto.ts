@@ -12,10 +12,6 @@ export class CreateIndicadorNocDto {
   @MinLength(3, { message: 'El nombre debe tener al menos 3 caracteres.' })
   nombre: string;
 
-  @IsEnum(Escala)
-  @IsNotEmpty({ message: 'La escala no puede estar vacía.' })
-  escala: Escala;
-
   @IsArray()
   @IsUUID('4', { each: true, message: 'Cada ID de resultado debe ser un UUID válido.' })
   @IsOptional()
