@@ -729,49 +729,67 @@ export class NocsService {
   }
 
   private async resolveEscala(manager: EntityManager, header: string, content: string, codigoResultado: string): Promise<EscalaNoc> {
-    // Parsear niveles del texto plano
+
+    // 1. Intentamos obtener el código del header
+    let scaleCode = header ? header.replace(/^Escala\s*/i, '').trim() : '';
+
+    // 2. Parsear niveles del contenido (texto plano del body)
     const nivelesRaw = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     const nivelesParsed = nivelesRaw.map(l => {
       const m = l.match(/^(\d+)\s*-\s*(.+)$/);
       return m ? { puntuacion: parseInt(m[1]), texto: m[2].trim() } : null;
     }).filter(n => n !== null) as { puntuacion: number, texto: string }[];
 
+    // --- CORRECCIÓN INICIO ---
+    // Verificamos si 'scaleCode' es en realidad un Nivel (ej: "1 - Nunca demostrado")
+    // El regex busca: Un número, seguido de guión, seguido de texto.
+    const posibleNivelEnHeader = scaleCode.match(/^(\d+)\s*-\s*(.+)$/);
+
+    if (posibleNivelEnHeader) {
+      // ¡Es un nivel atrapado en el header!
+      // 1. Lo agregamos al principio del array de niveles
+      nivelesParsed.unshift({
+        puntuacion: parseInt(posibleNivelEnHeader[1]),
+        texto: posibleNivelEnHeader[2].trim()
+      });
+
+      // 2. Limpiamos scaleCode para que NO use ese texto como código de la escala.
+      // Al dejarlo vacío, forzaremos la lógica de abajo a generar un código (GEN-...)
+      scaleCode = '';
+    }
+    // --- CORRECCIÓN FIN ---
+
     if (nivelesParsed.length === 0) {
-      // Si no hay escala, podrías lanzar error o retornar null si tu BD lo permite
       throw new BadRequestException("No se encontraron niveles de escala en el texto.");
     }
 
-    // 1. Intento por Código (si venía en el header, ej: "Escala m")
-    const scaleCode = header ? header.replace(/^Escala\s*/i, '').trim() : '';
+    // 3. Intento por Código (Solo si scaleCode sobrevivió y es un código real válido)
     if (scaleCode) {
       const escala = await manager.findOne(EscalaNoc, { where: { codigo: scaleCode } });
       if (escala) return escala;
     }
 
-    // 2. Búsqueda profunda (Deep comparison) para encontrar una escala idéntica existente
-    // Traemos todas las escalas con sus niveles. (Ojo: si son miles, esto se debe optimizar con QueryBuilder, pero para <100 escalas está bien)
+    // 4. Búsqueda profunda (Deep comparison) para encontrar una escala idéntica existente
     const todasEscalas = await manager.find(EscalaNoc, { relations: { niveles: true } });
 
     for (const s of todasEscalas) {
       if (s.niveles.length === nivelesParsed.length) {
-        // Ordenamos ambos arreglos para comparar 1 a 1
         const sNiveles = s.niveles.sort((a, b) => a.puntuacion - b.puntuacion);
         const pNiveles = [...nivelesParsed].sort((a, b) => a.puntuacion - b.puntuacion);
 
         let match = true;
         for (let i = 0; i < sNiveles.length; i++) {
-          // Comparamos puntuación y texto (usando includes o igual estricto según prefieras)
           if (sNiveles[i].puntuacion !== pNiveles[i].puntuacion || sNiveles[i].texto.trim() !== pNiveles[i].texto.trim()) {
             match = false;
             break;
           }
         }
-        if (match) return s; // ¡Encontramos una escala idéntica! La reutilizamos.
+        if (match) return s;
       }
     }
 
-    // 3. Crear nueva escala si no existe
-    // Generamos un código único si no venía uno. Usamos timestamp o un hash simple.
+    // 5. Crear nueva escala si no existe
+    // Ahora, si scaleCode venía sucio (era un nivel), estará vacío y entrará al OR (||) generando un código GEN correcto.
     const newCode = scaleCode || `GEN-${codigoResultado}-${Date.now().toString().slice(-4)}`;
 
     const nuevaEscala = manager.create(EscalaNoc, {
