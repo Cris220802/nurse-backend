@@ -109,7 +109,7 @@ export class NicsService {
         'intervencion.codigo_intervencion',
         'intervencion.nombre_intervencion',
       ])
-
+      .orderBy('intervencion.id', 'ASC')
       .skip(offset)
       .take(limit)
       .getManyAndCount(); // Ejecuta la consulta

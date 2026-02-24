@@ -85,7 +85,7 @@ export class NandasService {
         'diagnostico.codigo_diagnostico',
         'diagnostico.nombre_diagnostico',
       ])
-
+      .orderBy('diagnostico.id', 'ASC')
       .skip(offset)
       .take(limit)
       .getManyAndCount();

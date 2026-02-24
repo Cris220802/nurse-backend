@@ -118,7 +118,7 @@ export class NocsService {
         'resultado.codigo_resultado',
         'resultado.nombre_resultado',
       ])
-
+      .orderBy('resultado.id', 'ASC')
       .skip(offset)
       .take(limit)
       .getManyAndCount(); // Ejecuta la consulta
