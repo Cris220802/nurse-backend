@@ -1,6 +1,6 @@
 // nandas.controller.ts
 
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards, BadRequestException } from '@nestjs/common';
 import { NandasService } from './nandas.service';
 import { CreateDiagnosticoNandaDto } from './dto/create-nanda.dto';
 import { UpdateNandaDto } from './dto/update-nanda.dto';
@@ -80,7 +80,14 @@ export class NandasController {
     return this.nandasService.findAll(paginationDto);
   }
 
-  @Get('all') 
+  @UseGuards(JwtAuthGuard)
+  @Post('import/raw')
+  createFromRawText(@Body('text') text: string) {
+    if (!text) throw new BadRequestException('El texto es requerido.');
+    return this.nandasService.createFromRawText(text);
+  }
+
+  @Get('all')
   findAllRaw() {
     return this.nandasService.findAllRaw();
   }

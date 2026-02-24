@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards, BadRequestException } from '@nestjs/common';
 import { NicsService } from './nics.service';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { CreateIntervencionNicDto } from './dto/create-nic.dto';
@@ -59,6 +59,13 @@ export class NicsController {
   @Get()
   findAll(@Query() paginationDto: PaginationDto) {
     return this.nicsService.findAll(paginationDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('import/raw')
+  createFromRawText(@Body('text') text: string) {
+    if (!text) throw new BadRequestException('El texto es requerido.');
+    return this.nicsService.createFromRawText(text);
   }
 
   @Get('all')

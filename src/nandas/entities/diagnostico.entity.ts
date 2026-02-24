@@ -21,8 +21,8 @@ export class DiagnosticoNanda {
     })
     nombre_diagnostico: string;
 
-    @Column('text')
-    edicion: string;
+    @Column('text', { nullable: true })
+    edicion: string | null;
 
     @Column('text')
     definicion: string;
@@ -43,26 +43,26 @@ export class DiagnosticoNanda {
         array: true,
         default: []
     })
-    factores: string[]  
+    factores: string[]
 
-      // --- RELACIÓN AÑADIDA ---
+    // --- RELACIÓN AÑADIDA ---
     // Muchos diagnósticos pertenecen a una necesidad.
     @ManyToOne(
         () => NecesidadNanda,
         (necesidad) => necesidad.diagnosticos,
-        { onDelete: 'CASCADE' } // Opcional: si borras una clase, se borran sus diagnósticos.
+        { onDelete: 'CASCADE', nullable: true } // Opcional: si borras una clase, se borran sus diagnósticos.
     )
-    necesidad: NecesidadNanda;
+    necesidad: NecesidadNanda | null;
 
-      // --- RELACIÓN AÑADIDA ---
+    // --- RELACIÓN AÑADIDA ---
     // Muchos diagnósticos pertenecen a un patron.
     @ManyToOne(
         () => PatronNanda,
         (patron) => patron.diagnosticos,
-        { onDelete: 'CASCADE' } // Opcional: si borras una clase, se borran sus diagnósticos.
+        { onDelete: 'CASCADE', nullable: true } // Opcional: si borras una clase, se borran sus diagnósticos.
     )
-    patron: PatronNanda;
-    
+    patron: PatronNanda | null;
+
     // --- RELACIÓN AÑADIDA ---
     // Muchos diagnósticos pertenecen a una clase.
     @ManyToOne(
@@ -83,5 +83,5 @@ export class DiagnosticoNanda {
         name: 'diagnostico_nanda_resultado_noc', // Nombre opcional para la tabla pivote
     })
     resultados: ResultadoNoc[];
-  
+
 }

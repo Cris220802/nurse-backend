@@ -15,7 +15,7 @@ export class CreateDiagnosticoNandaDto {
   nombre_diagnostico: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   edicion: string;
 
   @IsString()
@@ -27,7 +27,7 @@ export class CreateDiagnosticoNandaDto {
   @IsString({ each: true, message: 'Cada observación debe ser un texto.' })
   @IsOptional() // Hacemos que este campo no sea obligatorio
   observaciones?: string[];
-  
+
   @IsArray({ message: 'Las características deben ser un arreglo.' })
   @IsString({ each: true, message: 'Cada característica debe ser un texto.' })
   @IsOptional()
@@ -37,16 +37,16 @@ export class CreateDiagnosticoNandaDto {
   @IsString({ each: true, message: 'Cada factor debe ser un texto.' })
   @IsOptional()
   factores?: string[];
-  
+
   @IsUUID('4', { message: 'El ID de la clase debe ser un UUID válido.' })
   @IsNotEmpty({ message: 'Debes proporcionar el ID de la clase a la que pertenece el diagnóstico.' })
   claseId: string; // Campo para enlazar con la entidad ClaseNanda
 
   @IsUUID('4', { message: 'El ID de la necesidad debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'Debes proporcionar el ID de la clase a la que pertenece el diagnóstico.' })
+  @IsOptional()
   necesidadId: string; // Campo para enlazar con la entidad ClaseNanda
 
   @IsUUID('4', { message: 'El ID del patron debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'Debes proporcionar el ID de la clase a la que pertenece el diagnóstico.' })
+  @IsOptional()
   patronId: string; // Campo para enlazar con la entidad ClaseNanda
 }

@@ -1,7 +1,7 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator';
 
 export class CreateResultadoNocDto {
-  
+
   @IsString()
   @IsNotEmpty({ message: 'El código del resultado no puede estar vacío.' })
   codigo_resultado: string;
@@ -26,18 +26,25 @@ export class CreateResultadoNocDto {
   claseId: string;
 
   @IsUUID('4', { message: 'El ID del patrón debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'Debes proporcionar el ID del patrón.' })
+  @IsOptional()
   patronId: string;
-  
+
   // --- IDs Opcionales para Relaciones Muchos a Muchos ---
-  
+
   @IsArray()
   @IsUUID('4', { each: true, message: 'Cada ID de indicador debe ser un UUID válido.' })
   @IsOptional()
   indicadoresIds?: string[];
-  
+
   @IsArray()
   @IsUUID('4', { each: true, message: 'Cada ID de especialidad debe ser un UUID válido.' })
   @IsOptional()
   especialidadesIds?: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  escalaId: string;
+
+  @IsOptional()
+  puntuacion_objetivo?: number;
 }

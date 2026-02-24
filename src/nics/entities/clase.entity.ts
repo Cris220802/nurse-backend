@@ -1,5 +1,6 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { IntervencionNic } from "./intervencion.entity";
+import { DominioNic } from "./dominio.entity";
 
 
 @Entity()
@@ -22,4 +23,10 @@ export class ClaseNic {
         (intervencion) => intervencion.clase
     )
     intervenciones: IntervencionNic[];
+
+    @ManyToOne(
+        () => DominioNic,
+        (dominio) => dominio.clases
+    )
+    dominio: DominioNic;
 }

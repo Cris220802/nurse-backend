@@ -9,20 +9,22 @@ import { CampoNic } from './entities/campo.entity';
 import { ActividadNic } from './entities/actividad.entity';
 import { DiagnosticoNanda } from 'src/nandas/entities/diagnostico.entity';
 import { ResultadoNoc } from 'src/nocs/entities/resultado.entity';
+import { DominioNic } from './entities/dominio.entity';
 
 @Module({
   controllers: [NicsController],
   providers: [NicsService],
   imports: [
-      TypeOrmModule.forFeature([
-        Especialidad,
-        IntervencionNic,
-        ClaseNic,
-        CampoNic,
-        ActividadNic,
-        DiagnosticoNanda,
-        ResultadoNoc
-      ])
-    ]
+    TypeOrmModule.forFeature([
+      Especialidad,
+      IntervencionNic,
+      ClaseNic,
+      CampoNic,
+      DominioNic,
+      ActividadNic,
+      DiagnosticoNanda,
+      ResultadoNoc
+    ])
+  ]
 })
-export class NicsModule {}
+export class NicsModule { }

@@ -17,11 +17,11 @@ async function bootstrap() {
 
   const allowedOrigins = [
     // Tu frontend en Render
-    'https://nurse-frontend-1gg4.onrender.com', 
-    
+    'https://nurse-frontend-sd9a.onrender.com',
+
     // desarrollo local
-    'http://localhost:5173', 
-    
+    'http://localhost:5173',
+
     // Orígen para desarrollo móvil 
     'http://localhost',
   ];
@@ -32,7 +32,7 @@ async function bootstrap() {
       if (!origin) {
         return callback(null, true);
       }
-      
+
       if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
       } else {
